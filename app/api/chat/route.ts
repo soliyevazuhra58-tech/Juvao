@@ -57,11 +57,11 @@ function extractDuckDuckGoResults(html: string): SearchSource[] {
 
 function extractBingRssResults(xml: string): SearchSource[] {
   const results: SearchSource[] = [];
-  const items = xml.match(/<item>[\\s\\S]*?<\\/item>/gi) ?? [];
+  const items = xml.match(/<item>[\s\S]*?<\/item>/gi) ?? [];
   for (const item of items) {
-    const titleMatch = item.match(/<title>([\\s\\S]*?)<\\/title>/i);
-    const linkMatch = item.match(/<link>([\\s\\S]*?)<\\/link>/i);
-    const descMatch = item.match(/<description>([\\s\\S]*?)<\\/description>/i);
+    const titleMatch = item.match(/<title>([\s\S]*?)<\/title>/i);
+    const linkMatch = item.match(/<link>([\s\S]*?)<\/link>/i);
+    const descMatch = item.match(/<description>([\s\S]*?)<\/description>/i);
     if (!titleMatch || !linkMatch) continue;
     const title = stripHtml(titleMatch[1]);
     const url = decodeHtml(linkMatch[1].trim());
