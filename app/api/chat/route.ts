@@ -8,43 +8,41 @@ type ChatMessage = {
   content: string;
 };
 
+const jsonError = (message: string, status: number) =>
+  Response.json({ error: message }, { status });
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
-
   if (!apiKey) {
-    return Response.json(
-      { error: "Groq API key is missing. Add GROQ_API_KEY to your environment variables." },
-      { status: 503 }
-    );
+    return jsonError("JUVAO is not configured yet. Please try again later.", 503);
   }
 
-  let body: { messages?: ChatMessage[] };
+  let body: { messages?: unknown };
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid request body." }, { status: 400 });
+    return jsonError("The message could not be read. Please try again.", 400);
   }
 
-  const messages = body.messages;
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return Response.json({ error: "At least one message is required." }, { status: 400 });
+  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    return jsonError("Please send a message to continue.", 400);
   }
 
-  const safeMessages = messages
-    .filter(
-      (message): message is ChatMessage =>
-        !!message &&
+  const safeMessages = (body.messages as unknown[])
+    .filter((item): item is ChatMessage => {
+      if (!item || typeof item !== "object") return false;
+      const message = item as Record<string, unknown>;
+      return (
         (message.role === "user" || message.role === "assistant") &&
         typeof message.content === "string"
-    )
+      );
+    })
     .slice(-24)
     .map(({ role, content }) => ({ role, content: content.slice(0, 16000) }));
 
   if (!safeMessages.length || safeMessages[safeMessages.length - 1].role !== "user") {
-    return Response.json({ error: "The latest message must be from the user." }, { status: 400 });
+    return jsonError("Please send a new message to continue.", 400);
   }
-
-  const model = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
   try {
     const upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -54,12 +52,12 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model,
+        model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
         messages: [
           {
             role: "system",
             content:
-              "You are JUVAO, a capable, warm, and precise AI assistant. Reply in the language used by the user. Use clear structure and Markdown when useful. Be honest when uncertain. Never reveal hidden reasoning; provide concise explanations of conclusions instead.",
+              "You are JUVAO, a helpful, thoughtful, and accurate AI assistant. Reply in the language used by the user. Format answers clearly with Markdown when useful. Be honest about uncertainty. Do not reveal hidden reasoning; give concise explanations and useful conclusions.",
           },
           ...safeMessages,
         ],
@@ -68,23 +66,16 @@ export async function POST(request: NextRequest) {
         reasoning_effort: "medium",
       }),
       cache: "no-store",
+      signal: request.signal,
     });
 
     if (!upstream.ok) {
-      const detail = await upstream.text();
-      let message = detail;
-      try {
-        const parsed = JSON.parse(detail);
-        message = parsed?.error?.message || detail;
-      } catch {}
-      return Response.json(
-        { error: `Groq API error (${upstream.status}): ${message.slice(0, 500)}` },
-        { status: upstream.status }
-      );
+      // Keep provider details and credentials out of the user-facing interface.
+      return jsonError("JUVAO couldn't respond right now. Please try again in a moment.", 502);
     }
 
     if (!upstream.body) {
-      return Response.json({ error: "Groq returned an empty response." }, { status: 502 });
+      return jsonError("JUVAO returned an empty response. Please try again.", 502);
     }
 
     return new Response(upstream.body, {
@@ -96,6 +87,6 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch {
-    return Response.json({ error: "Could not connect to Groq. Please try again." }, { status: 502 });
+    return jsonError("Connection interrupted. Please try again.", 502);
   }
 }
