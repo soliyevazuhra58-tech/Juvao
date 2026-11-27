@@ -5,7 +5,7 @@ import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
-  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen
+  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Sparkles
 } from "lucide-react";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
@@ -37,6 +37,7 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
+  const [selectionPopup, setSelectionPopup] = useState<{ text: string; x: number; y: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -79,6 +80,37 @@ export default function Home() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
+
+  useEffect(() => {
+    const updateSelectionPopup = () => {
+      const selection = window.getSelection();
+      const selectedText = selection?.toString().trim() ?? "";
+      if (!selection || !selectedText || selection.rangeCount === 0 || selectedText.length < 2) {
+        setSelectionPopup(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const node = range.commonAncestorContainer;
+      const element = node instanceof Element ? node : node.parentElement;
+      if (!element?.closest(".markdown-body")) {
+        setSelectionPopup(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) return;
+      const x = Math.max(112, Math.min(window.innerWidth - 112, rect.left + rect.width / 2));
+      const y = Math.max(12, rect.top - 54);
+      setSelectionPopup({ text: selectedText, x, y });
+    };
+    document.addEventListener("selectionchange", updateSelectionPopup);
+    document.addEventListener("pointerup", updateSelectionPopup);
+    document.addEventListener("keyup", updateSelectionPopup);
+    return () => {
+      document.removeEventListener("selectionchange", updateSelectionPopup);
+      document.removeEventListener("pointerup", updateSelectionPopup);
+      document.removeEventListener("keyup", updateSelectionPopup);
+    };
+  }, []);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -175,8 +207,8 @@ export default function Home() {
       let pendingText = "";
       typingTimer = window.setInterval(() => {
         if (!pendingText.length) return;
-        const next = pendingText.slice(0, 2);
-        pendingText = pendingText.slice(2);
+        const next = pendingText.slice(0, 6);
+        pendingText = pendingText.slice(6);
         displayedText += next;
         setChats((prev) => prev.map((chat) => chat.id === activeChat.id
           ? {
@@ -188,7 +220,7 @@ export default function Home() {
             }
           : chat
         ));
-      }, 14);
+      }, 10);
 
       const consumeEvent = (event: string) => {
         for (const line of event.split("\n")) {
@@ -215,7 +247,7 @@ export default function Home() {
         if (done) break;
       }
       if (buffer.trim()) consumeEvent(buffer);
-      while (pendingText.length) await new Promise((resolve) => window.setTimeout(resolve, 14));
+      while (pendingText.length) await new Promise((resolve) => window.setTimeout(resolve, 10));
       window.clearInterval(typingTimer);
       if (!receivedText) throw new Error("No response was received. Please try again.");
     } catch (err) {
@@ -257,6 +289,25 @@ export default function Home() {
       event.preventDefault();
       sendMessage();
     }
+  }
+
+  async function copySelectedText() {
+    if (!selectionPopup?.text) return;
+    try {
+      await navigator.clipboard.writeText(selectionPopup.text);
+      setSelectionPopup(null);
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      setError("Could not copy the selected text.");
+    }
+  }
+
+  function askAboutSelection() {
+    if (!selectionPopup?.text || streaming) return;
+    const selected = selectionPopup.text;
+    setSelectionPopup(null);
+    window.getSelection()?.removeAllRanges();
+    sendMessage(`Explain or discuss this selected text:\n\n${selected}`);
   }
 
   async function copyMessage(message: Message) {
@@ -320,6 +371,20 @@ export default function Home() {
       </aside>
 
       {mobileSidebar && <button className="mobile-scrim" onClick={() => setMobileSidebar(false)} aria-label="Close menu" />}
+
+      {selectionPopup && (
+        <div
+          className="selection-popup"
+          style={{ left: selectionPopup.x, top: selectionPopup.y }}
+          role="toolbar"
+          aria-label="Selected text actions"
+          onPointerDown={(event) => event.preventDefault()}
+        >
+          <button onClick={copySelectedText}><Copy size={14} /> Copy</button>
+          <span className="selection-divider" />
+          <button onClick={askAboutSelection} disabled={streaming}><Sparkles size={14} /> Ask JUVAO</button>
+        </div>
+      )}
 
       <section className="main-panel">
         <header className="topbar">
