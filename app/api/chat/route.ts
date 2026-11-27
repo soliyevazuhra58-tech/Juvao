@@ -115,13 +115,16 @@ async function searchViaCloudflareWorker(query: string, signal: AbortSignal): Pr
   const secret = process.env.JUVAO_SEARCH_SECRET;
   if (!workerUrl || !secret) return [];
 
-  const response = await fetch(workerUrl, {
-    method: "POST",
+  const endpoint = new URL(workerUrl);
+  endpoint.pathname = "/search";
+  endpoint.searchParams.set("q", query.slice(0, 400));
+
+  const response = await fetch(endpoint, {
+    method: "GET",
     headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${secret}`,
+      "X-JUVAO-SECRET": secret,
+      "Accept": "application/json",
     },
-    body: JSON.stringify({ query: query.slice(0, 500) }),
     cache: "no-store",
     signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
   });
