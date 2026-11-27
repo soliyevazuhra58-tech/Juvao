@@ -20,53 +20,94 @@ function validSourceUrl(value: unknown): value is string {
   }
 }
 
-async function searchWeb(query: string, signal: AbortSignal): Promise<SearchSource[]> {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) {
-    throw new Error("TAVILY_API_KEY_MISSING");
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
+}
+
+function stripHtml(value: string): string {
+  return decodeHtml(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ")).trim();
+}
+
+function extractDuckDuckGoResults(html: string): SearchSource[] {
+  const results: SearchSource[] = [];
+  const blocks = html.split(/(?=<div\b[^>]*class=["'][^"']*result(?:\s|["'])|<tr\b[^>]*class=["'][^"']*result)/i);
+  for (const block of blocks) {
+    const link = block.match(/<a\b[^>]*class=["'][^"']*(?:result__a|result-link)[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i)
+      ?? block.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*class=["'][^"']*(?:result__a|result-link)[^"']*["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!link) continue;
+
+    let url = decodeHtml(link[1].trim());
+    try {
+      if (url.startsWith("//")) url = "https:" + url;
+      const parsed = new URL(url, "https://duckduckgo.com");
+      if (parsed.hostname.endsWith("duckduckgo.com") && (parsed.pathname === "/l/" || parsed.pathname === "/")) {
+        url = parsed.searchParams.get("uddg") || parsed.searchParams.get("url") || "";
+      } else {
+        url = parsed.toString();
+      }
+    } catch {
+      continue;
+    }
+    if (!validSourceUrl(url)) continue;
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (hostname === "duckduckgo.com" || hostname.endsWith(".duckduckgo.com")) continue;
+
+    const title = stripHtml(link[2]);
+    if (!title) continue;
+    const snippetMatch = block.match(/class=["'][^"']*(?:result__snippet|result-snippet|snippet)[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|td)>/i);
+    const source = { title: title.slice(0, 180), url, snippet: snippetMatch ? stripHtml(snippetMatch[1]).slice(0, 1800) : "" };
+    if (!results.some((item) => item.url === source.url)) results.push(source);
+    if (results.length >= 5) break;
   }
+  return results;
+}
 
-  const response = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      api_key: apiKey,
-      query: query.slice(0, 500),
-      search_depth: "advanced",
-      topic: /news|yangilik|bugun|today|latest|so'nggi|so‘nggi/i.test(query) ? "news" : "general",
-      max_results: 6,
-      include_answer: false,
-      include_raw_content: false,
-    }),
-    cache: "no-store",
-    signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    console.error("[JUVAO search] Tavily error", response.status, detail.slice(0, 500));
-    throw new Error(response.status === 401 || response.status === 403
-      ? "TAVILY_API_KEY_INVALID"
-      : "TAVILY_PROVIDER_ERROR");
-  }
-
-  const data = await response.json() as {
-    results?: Array<{ title?: string; url?: string; content?: string; score?: number }>;
+async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<SearchSource[]> {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,uz;q=0.8",
+    "Referer": "https://duckduckgo.com/",
   };
-  const results = Array.isArray(data.results) ? data.results : [];
 
-  return results
-    .filter((item) => item && item.title && validSourceUrl(item.url))
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-    .slice(0, 5)
-    .map((item) => ({
-      title: String(item.title).slice(0, 180),
-      url: String(item.url),
-      snippet: String(item.content ?? "").slice(0, 2200),
-    }));
+  const endpoints = [
+    "https://html.duckduckgo.com/html/",
+    "https://lite.duckduckgo.com/lite/",
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const url = new URL(endpoint);
+      url.searchParams.set("q", query.slice(0, 500));
+      const response = await fetch(url, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+        redirect: "follow",
+        signal: AbortSignal.any([signal, AbortSignal.timeout(12000)]),
+      });
+      const html = await response.text();
+      if (!response.ok) {
+        console.warn("[JUVAO DDG] HTTP", response.status, endpoint);
+        continue;
+      }
+      const results = extractDuckDuckGoResults(html);
+      console.info("[JUVAO DDG] endpoint", endpoint, "status", response.status, "bytes", html.length, "results", results.length);
+      if (results.length) return results;
+      console.warn("[JUVAO DDG] no results parsed; content-type:", response.headers.get("content-type"));
+    } catch (error) {
+      console.warn("[JUVAO DDG] request failed:", endpoint, error instanceof Error ? error.message : String(error));
+      if (signal.aborted) throw new Error("SEARCH_CANCELLED");
+    }
+  }
+  return [];
 }
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
@@ -104,17 +145,11 @@ export async function POST(request: NextRequest) {
     if (wantsSearch) {
       const query = safeMessages[safeMessages.length - 1].content.slice(0, 500);
       try {
-        sources = await searchWeb(query, request.signal);
+        sources = await searchDuckDuckGo(query, request.signal);
       } catch (error) {
         const reason = error instanceof Error ? error.message : "UNKNOWN";
         console.error("[JUVAO search] failed:", reason);
-        if (reason === "TAVILY_API_KEY_MISSING") {
-          return jsonError("Web Search sozlanmagan. Vercel Environment Variables bo‘limiga TAVILY_API_KEY qo‘shing.", 503);
-        }
-        if (reason === "TAVILY_API_KEY_INVALID") {
-          return jsonError("Tavily API kaliti noto‘g‘ri yoki faol emas. Vercel’dagi TAVILY_API_KEY qiymatini tekshiring.", 503);
-        }
-        return jsonError("Web Search xizmati vaqtincha javob bermadi. Birozdan keyin qayta urinib ko‘ring.", 503);
+        return jsonError("DuckDuckGo qidiruvi vaqtincha javob bermadi. Vercel Logs bo‘limidagi [JUVAO DDG] yozuvlarini tekshiring.", 503);
       }
       if (!sources.length) {
         return jsonError("Bu so‘rov bo‘yicha ishonchli qidiruv natijalari topilmadi. Boshqacha so‘rov yozib ko‘ring.", 404);
