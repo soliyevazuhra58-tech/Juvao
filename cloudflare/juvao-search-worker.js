@@ -101,39 +101,66 @@ async function searchDuckDuckGo(query) {
   return [];
 }
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-JUVAO-SECRET",
+};
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 export default {
   async fetch(request, env) {
-    if (request.method === "GET") {
-      return Response.json({ service: "JUVAO DuckDuckGo Search", status: "ok" });
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
     }
 
-    if (request.method !== "POST") {
-      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    const url = new URL(request.url);
+    if (url.pathname !== "/search") {
+      return jsonResponse({ service: "JUVAO DuckDuckGo Search", status: "ok" });
     }
 
-    const authorization = request.headers.get("Authorization") || "";
-    if (!env.JUVAO_SEARCH_SECRET || authorization !== `Bearer ${env.JUVAO_SEARCH_SECRET}`) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (request.method !== "GET") {
+      return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return Response.json({ error: "Invalid JSON" }, { status: 400 });
+    if (!env.JUVAO_SEARCH_SECRET) {
+      return jsonResponse({ error: "Worker secret is not configured" }, 500);
     }
 
-    const query = typeof body.query === "string" ? body.query.trim().slice(0, 500) : "";
-    if (!query) return Response.json({ error: "Query is required" }, { status: 400 });
+    if (request.headers.get("X-JUVAO-SECRET") !== env.JUVAO_SEARCH_SECRET) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
+    const query = (url.searchParams.get("q") || "").trim();
+    if (!query || query.length > 400) {
+      return jsonResponse({ error: "Invalid search query" }, 400);
+    }
 
     try {
       const results = await searchDuckDuckGo(query);
-      return Response.json({ results }, {
-        headers: { "Cache-Control": "no-store" },
-      });
+      if (!results.length) {
+        return jsonResponse({
+          query,
+          provider: "DuckDuckGo",
+          results: [],
+          error: "DuckDuckGo did not return usable results.",
+        }, 502);
+      }
+
+      return jsonResponse({ query, provider: "DuckDuckGo", results });
     } catch (error) {
       console.error("[JUVAO DDG Worker] failed", error);
-      return Response.json({ error: "DuckDuckGo request failed" }, { status: 502 });
+      return jsonResponse({ error: "DuckDuckGo request failed" }, 502);
     }
   },
 };
