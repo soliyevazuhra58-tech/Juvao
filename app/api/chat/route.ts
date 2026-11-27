@@ -54,6 +54,59 @@ function extractDuckDuckGoResults(html: string): SearchSource[] {
   return results;
 }
 
+
+function extractBingRssResults(xml: string): SearchSource[] {
+  const results: SearchSource[] = [];
+  const items = xml.match(/<item>[\\s\\S]*?<\\/item>/gi) ?? [];
+  for (const item of items) {
+    const titleMatch = item.match(/<title>([\\s\\S]*?)<\\/title>/i);
+    const linkMatch = item.match(/<link>([\\s\\S]*?)<\\/link>/i);
+    const descMatch = item.match(/<description>([\\s\\S]*?)<\\/description>/i);
+    if (!titleMatch || !linkMatch) continue;
+    const title = stripHtml(titleMatch[1]);
+    const url = decodeHtml(linkMatch[1].trim());
+    if (!title || !validSourceUrl(url)) continue;
+    results.push({ title: title.slice(0, 180), url, snippet: descMatch ? stripHtml(descMatch[1]).slice(0, 1800) : "" });
+    if (results.length >= 5) break;
+  }
+  return results;
+}
+
+async function searchWithoutApiKey(query: string, signal: AbortSignal): Promise<SearchSource[]> {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+  };
+  const bing = new URL("https://www.bing.com/search");
+  bing.searchParams.set("format", "rss");
+  bing.searchParams.set("q", query);
+  const ddg = new URL("https://html.duckduckgo.com/html/");
+  ddg.searchParams.set("q", query);
+  const lite = new URL("https://lite.duckduckgo.com/lite/");
+  lite.searchParams.set("q", query);
+  const attempts: Array<{ url: URL; parse: (value: string) => SearchSource[] }> = [
+    { url: bing, parse: extractBingRssResults },
+    { url: ddg, parse: extractDuckDuckGoResults },
+    { url: lite, parse: extractDuckDuckGoResults },
+  ];
+  for (const attempt of attempts) {
+    try {
+      const response = await fetch(attempt.url, {
+        headers,
+        cache: "no-store",
+        signal: AbortSignal.any([signal, AbortSignal.timeout(7000)]),
+      });
+      if (!response.ok) continue;
+      const results = attempt.parse(await response.text());
+      if (results.length) return results;
+    } catch {
+      if (signal.aborted) throw new Error("Search cancelled");
+    }
+  }
+  return [];
+}
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return jsonError("JUVAO is not configured yet. Please try again later.", 503);
@@ -89,22 +142,9 @@ export async function POST(request: NextRequest) {
   try {
     if (wantsSearch) {
       const query = safeMessages[safeMessages.length - 1].content.slice(0, 500);
-      const searchUrl = new URL("https://html.duckduckgo.com/html/");
-      searchUrl.searchParams.set("q", query);
-      const searchResponse = await fetch(searchUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; JUVAO/1.0)",
-          "Accept": "text/html,application/xhtml+xml",
-        },
-        cache: "no-store",
-        signal: request.signal,
-      });
-      if (!searchResponse.ok) {
-        return jsonError("Web search is temporarily unavailable. Please try again.", 502);
-      }
-      sources = extractDuckDuckGoResults(await searchResponse.text());
+      sources = await searchWithoutApiKey(query, request.signal);
       if (!sources.length) {
-        return jsonError("No web results were found. Search may be temporarily blocked; try again or rephrase your query.", 404);
+        return jsonError("Free web search providers are temporarily unavailable. Please try again in a moment.", 503);
       }
     }
 
