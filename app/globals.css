@@ -216,3 +216,23 @@ kbd { font: 10px 'DM Sans', sans-serif; color: var(--subtle); padding: 2px 5px; 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+.composer-tools { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.web-search-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 29px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; transition: color .16s ease, background-color .16s ease, border-color .16s ease; }
+.web-search-toggle:hover { color: var(--text); background: var(--surface-soft); }
+.web-search-toggle.enabled { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.source-list { margin-top: 13px; max-width: 100%; }
+.source-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.source-items { display: flex; flex-wrap: wrap; gap: 7px; }
+.source-item { min-width: 0; max-width: 100%; display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); text-decoration: none !important; transition: border-color .16s ease, background-color .16s ease; }
+.source-item:hover { border-color: var(--line-strong); background: var(--surface-soft); }
+.source-number { width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-soft); color: var(--text); font-size: 9px; font-weight: 700; }
+.source-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.source-text strong { max-width: 210px; overflow: hidden; color: var(--text); font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.source-text small { color: var(--subtle); font-size: 9px; }
+@media (max-width: 760px) {
+  .composer-tools { gap: 6px; }
+  .web-search-toggle { min-height: 28px; padding: 0 7px; font-size: 9px; }
+  .composer-hint { font-size: 8px; }
+  .source-items { display: grid; grid-template-columns: 1fr; }
+  .source-item { width: 100%; }
+}
