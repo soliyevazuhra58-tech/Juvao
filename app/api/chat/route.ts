@@ -19,6 +19,41 @@ function validSourceUrl(value: unknown): value is string {
   }
 }
 
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&#(\\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\\da-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
+}
+
+function stripHtml(value: string): string {
+  return decodeHtml(value.replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ")).trim();
+}
+
+function extractDuckDuckGoResults(html: string): SearchSource[] {
+  const results: SearchSource[] = [];
+  const blocks = html.match(/<div[^>]*class="[^"]*result[^"]*"[^>]*>[\\s\\S]*?(?=<div[^>]*class="[^"]*result[^"]*"|$)/gi) ?? [];
+  for (const block of blocks) {
+    const link = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>/i);
+    if (!link) continue;
+    let url = decodeHtml(link[1]);
+    try {
+      if (url.startsWith("//")) url = "https:" + url;
+      const parsed = new URL(url, "https://duckduckgo.com");
+      if (parsed.hostname.endsWith("duckduckgo.com") && parsed.pathname === "/l/") url = parsed.searchParams.get("uddg") || "";
+      else url = parsed.toString();
+    } catch { continue; }
+    if (!validSourceUrl(url) || new URL(url).hostname.endsWith("duckduckgo.com")) continue;
+    const snippetMatch = block.match(/<(?:a|div)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\\s\\S]*?)<\\/(?:a|div)>/i);
+    const title = stripHtml(link[2]);
+    if (!title) continue;
+    results.push({ title: title.slice(0, 180), url, snippet: snippetMatch ? stripHtml(snippetMatch[1]).slice(0, 1800) : "" });
+    if (results.length >= 5) break;
+  }
+  return results;
+}
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return jsonError("JUVAO is not configured yet. Please try again later.", 503);
@@ -53,43 +88,23 @@ export async function POST(request: NextRequest) {
 
   try {
     if (wantsSearch) {
-      const tavilyKey = process.env.TAVILY_API_KEY;
-      if (!tavilyKey) {
-        return jsonError("Web Search is not configured. Add TAVILY_API_KEY to your Vercel environment variables.", 503);
-      }
-
-      const searchResponse = await fetch("https://api.tavily.com/search", {
-        method: "POST",
+      const query = safeMessages[safeMessages.length - 1].content.slice(0, 500);
+      const searchUrl = new URL("https://html.duckduckgo.com/html/");
+      searchUrl.searchParams.set("q", query);
+      const searchResponse = await fetch(searchUrl, {
         headers: {
-          Authorization: `Bearer ${tavilyKey}`,
-          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (compatible; JUVAO/1.0)",
+          "Accept": "text/html,application/xhtml+xml",
         },
-        body: JSON.stringify({
-          query: safeMessages[safeMessages.length - 1].content.slice(0, 500),
-          search_depth: "basic",
-          max_results: 5,
-          include_answer: false,
-        }),
         cache: "no-store",
         signal: request.signal,
       });
-
       if (!searchResponse.ok) {
         return jsonError("Web search is temporarily unavailable. Please try again.", 502);
       }
-
-      const searchData = await searchResponse.json();
-      sources = (Array.isArray(searchData.results) ? searchData.results : [])
-        .filter((item: Record<string, unknown>) => validSourceUrl(item.url))
-        .slice(0, 5)
-        .map((item: Record<string, unknown>) => ({
-          title: typeof item.title === "string" ? item.title.slice(0, 180) : new URL(item.url as string).hostname,
-          url: item.url as string,
-          snippet: typeof item.content === "string" ? item.content.slice(0, 1800) : "",
-        }));
-
+      sources = extractDuckDuckGoResults(await searchResponse.text());
       if (!sources.length) {
-        return jsonError("No useful web sources were found. Try a more specific search.", 404);
+        return jsonError("No web results were found. Search may be temporarily blocked; try again or rephrase your query.", 404);
       }
     }
 
