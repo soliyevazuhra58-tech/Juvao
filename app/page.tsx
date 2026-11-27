@@ -140,7 +140,7 @@ export default function Home() {
     setError("");
     setInput("");
 
-    const autoSearch = /\\b(latest|today|current|currently|recent|news|price|weather|2026|internetdan|qidir|manba|source|yangilik|bugun|hozir|narx|kurs)\\b/i.test(text);
+    const autoSearch = /\b(latest|today|current|currently|recent|news|price|weather|2026|internetdan|qidir|manba|source|yangilik|bugun|hozir|narx|kurs)\b/i.test(text);
     const useWebSearch = webSearch || autoSearch;
     const userMessage: Message = { id: makeId(), role: "user", content: text };
     const assistantMessage: Message = { id: makeId(), role: "assistant", content: "" };
