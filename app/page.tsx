@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
@@ -15,6 +15,10 @@ type Theme = "light" | "dark";
 const STORAGE_KEY = "juvao.chats.v2";
 const THEME_KEY = "juvao.theme";
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const markdownComponents: Components = {
+  a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+};
 
 const suggestions = [
   { title: "Explain a concept", description: "Make a difficult topic easy to understand.", prompt: "Explain a difficult topic in a simple, clear way." },
@@ -347,10 +351,7 @@ export default function Home() {
                           <div className="markdown-body">
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
-                              components={{
-                                a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
-                                pre: ({ ...props }) => <pre {...props} />,
-                              }}
+                              components={markdownComponents}
                             >{message.content}</ReactMarkdown>
                             {streaming && message.role === "assistant" && message === messages[messages.length - 1] && <span className="typing-cursor" />}
                           </div>
