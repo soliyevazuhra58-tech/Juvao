@@ -149,6 +149,7 @@ export default function Home() {
     setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    let typingTimer: number | undefined;
 
     try {
       const response = await fetch("/api/chat", {
@@ -169,7 +170,25 @@ export default function Home() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let fullText = "";
+      let receivedText = "";
+      let displayedText = "";
+      let pendingText = "";
+      typingTimer = window.setInterval(() => {
+        if (!pendingText.length) return;
+        const next = pendingText.slice(0, 2);
+        pendingText = pendingText.slice(2);
+        displayedText += next;
+        setChats((prev) => prev.map((chat) => chat.id === activeChat.id
+          ? {
+              ...chat,
+              messages: chat.messages.map((message) =>
+                message.id === assistantMessage.id ? { ...message, content: displayedText } : message
+              ),
+              updatedAt: Date.now(),
+            }
+          : chat
+        ));
+      }, 14);
 
       const consumeEvent = (event: string) => {
         for (const line of event.split("\n")) {
@@ -180,17 +199,8 @@ export default function Home() {
             const data = JSON.parse(payload);
             const token = data.choices?.[0]?.delta?.content;
             if (typeof token === "string" && token) {
-              fullText += token;
-              setChats((prev) => prev.map((chat) => chat.id === activeChat.id
-                ? {
-                    ...chat,
-                    messages: chat.messages.map((message) =>
-                      message.id === assistantMessage.id ? { ...message, content: fullText } : message
-                    ),
-                    updatedAt: Date.now(),
-                  }
-                : chat
-              ));
+              receivedText += token;
+              pendingText += token;
             }
           } catch {}
         }
@@ -205,7 +215,9 @@ export default function Home() {
         if (done) break;
       }
       if (buffer.trim()) consumeEvent(buffer);
-      if (!fullText) throw new Error("No response was received. Please try again.");
+      while (pendingText.length) await new Promise((resolve) => window.setTimeout(resolve, 14));
+      window.clearInterval(typingTimer);
+      if (!receivedText) throw new Error("No response was received. Please try again.");
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         setChats((prev) => prev.map((chat) => chat.id === activeChat.id
@@ -228,6 +240,7 @@ export default function Home() {
         ));
       }
     } finally {
+      if (typingTimer !== undefined) window.clearInterval(typingTimer);
       setStreaming(false);
       abortRef.current = null;
       textareaRef.current?.focus();
