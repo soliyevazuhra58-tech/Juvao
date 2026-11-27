@@ -13,114 +13,61 @@ function validSourceUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;
   try {
     const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
+    return (url.protocol === "https:" || url.protocol === "http:") &&
+      !["localhost", "127.0.0.1"].includes(url.hostname);
   } catch {
     return false;
   }
 }
 
-function decodeHtml(value: string): string {
-  return value
-    .replace(/&amp;/g, "&").replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([\da-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
-}
-
-function stripHtml(value: string): string {
-  return decodeHtml(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ")).trim();
-}
-
-function extractDuckDuckGoResults(html: string): SearchSource[] {
-  const results: SearchSource[] = [];
-  const anchors = html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) ?? [];
-  for (const anchor of anchors) {
-    const classMatch = anchor.match(/class=["']([^"']+)["']/i);
-    if (!classMatch || !/(?:result__a|result-link)/i.test(classMatch[1])) continue;
-    const hrefMatch = anchor.match(/href=["']([^"']+)["']/i);
-    if (!hrefMatch) continue;
-    let url = decodeHtml(hrefMatch[1]);
-    try {
-      if (url.startsWith("//")) url = "https:" + url;
-      const parsed = new URL(url, "https://duckduckgo.com");
-      if (parsed.hostname.endsWith("duckduckgo.com") && parsed.pathname === "/l/") {
-        url = parsed.searchParams.get("uddg") || "";
-      } else {
-        url = parsed.toString();
-      }
-    } catch { continue; }
-    if (!validSourceUrl(url) || new URL(url).hostname.endsWith("duckduckgo.com")) continue;
-    const title = stripHtml(anchor.replace(/<a\b[^>]*>/i, "").replace(/<\/a>$/i, ""));
-    if (!title) continue;
-    const anchorIndex = html.indexOf(anchor);
-    const context = html.slice(Math.max(0, anchorIndex - 1000), Math.min(html.length, anchorIndex + anchor.length + 1800));
-    const snippetMatch = context.match(/class=["'][^"']*(?:result__snippet|result-snippet)[^"']*["'][^>]*>([\s\S]*?)<\//i);
-    results.push({ title: title.slice(0, 180), url, snippet: snippetMatch ? stripHtml(snippetMatch[1]).slice(0, 1800) : "" });
-    if (results.length >= 5) break;
+async function searchWeb(query: string, signal: AbortSignal): Promise<SearchSource[]> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) {
+    throw new Error("TAVILY_API_KEY_MISSING");
   }
-  return results;
-}
 
+  const response = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({
+      api_key: apiKey,
+      query: query.slice(0, 500),
+      search_depth: "advanced",
+      topic: /news|yangilik|bugun|today|latest|so'nggi|so‘nggi/i.test(query) ? "news" : "general",
+      max_results: 6,
+      include_answer: false,
+      include_raw_content: false,
+    }),
+    cache: "no-store",
+    signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+  });
 
-function extractBingRssResults(xml: string): SearchSource[] {
-  const results: SearchSource[] = [];
-  const items = xml.match(/<item>[\s\S]*?<\/item>/gi) ?? [];
-  for (const item of items) {
-    const titleMatch = item.match(/<title>([\s\S]*?)<\/title>/i);
-    const linkMatch = item.match(/<link>([\s\S]*?)<\/link>/i);
-    const descMatch = item.match(/<description>([\s\S]*?)<\/description>/i);
-    if (!titleMatch || !linkMatch) continue;
-    const title = stripHtml(titleMatch[1]);
-    const url = decodeHtml(linkMatch[1].trim());
-    if (!title || !validSourceUrl(url)) continue;
-    results.push({ title: title.slice(0, 180), url, snippet: descMatch ? stripHtml(descMatch[1]).slice(0, 1800) : "" });
-    if (results.length >= 5) break;
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("[JUVAO search] Tavily error", response.status, detail.slice(0, 500));
+    throw new Error(response.status === 401 || response.status === 403
+      ? "TAVILY_API_KEY_INVALID"
+      : "TAVILY_PROVIDER_ERROR");
   }
-  return results;
-}
 
-async function searchWithoutApiKey(query: string, signal: AbortSignal): Promise<SearchSource[]> {
-  const headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
+  const data = await response.json() as {
+    results?: Array<{ title?: string; url?: string; content?: string; score?: number }>;
   };
-  const bing = new URL("https://www.bing.com/search");
-  bing.searchParams.set("format", "rss");
-  bing.searchParams.set("q", query);
-  const ddg = new URL("https://html.duckduckgo.com/html/");
-  ddg.searchParams.set("q", query);
-  const lite = new URL("https://lite.duckduckgo.com/lite/");
-  lite.searchParams.set("q", query);
-  const attempts: Array<{ url: URL; parse: (value: string) => SearchSource[] }> = [
-    { url: bing, parse: extractBingRssResults },
-    { url: ddg, parse: extractDuckDuckGoResults },
-    { url: lite, parse: extractDuckDuckGoResults },
-  ];
-  for (const attempt of attempts) {
-    try {
-      const response = await fetch(attempt.url, {
-        headers,
-        cache: "no-store",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(7000)]),
-      });
-      if (!response.ok) {
-        console.warn("[JUVAO search] provider returned", response.status, attempt.url.hostname);
-        continue;
-      }
-      const content = await response.text();
-      const results = attempt.parse(content);
-      console.info("[JUVAO search] provider", attempt.url.hostname, "status", response.status, "parsed", results.length, "bytes", content.length);
-      if (results.length) return results;
-      console.warn("[JUVAO search] no results parsed from", attempt.url.hostname, "content-type", response.headers.get("content-type"));
-    } catch (error) {
-      console.warn("[JUVAO search] provider failed", attempt.url.hostname, error instanceof Error ? error.message : String(error));
-      if (signal.aborted) throw new Error("Search cancelled");
-    }
-  }
-  return [];
-}
+  const results = Array.isArray(data.results) ? data.results : [];
 
+  return results
+    .filter((item) => item && item.title && validSourceUrl(item.url))
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 5)
+    .map((item) => ({
+      title: String(item.title).slice(0, 180),
+      url: String(item.url),
+      snippet: String(item.content ?? "").slice(0, 2200),
+    }));
+}
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return jsonError("JUVAO is not configured yet. Please try again later.", 503);
@@ -156,9 +103,21 @@ export async function POST(request: NextRequest) {
   try {
     if (wantsSearch) {
       const query = safeMessages[safeMessages.length - 1].content.slice(0, 500);
-      sources = await searchWithoutApiKey(query, request.signal);
+      try {
+        sources = await searchWeb(query, request.signal);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "UNKNOWN";
+        console.error("[JUVAO search] failed:", reason);
+        if (reason === "TAVILY_API_KEY_MISSING") {
+          return jsonError("Web Search sozlanmagan. Vercel Environment Variables bo‘limiga TAVILY_API_KEY qo‘shing.", 503);
+        }
+        if (reason === "TAVILY_API_KEY_INVALID") {
+          return jsonError("Tavily API kaliti noto‘g‘ri yoki faol emas. Vercel’dagi TAVILY_API_KEY qiymatini tekshiring.", 503);
+        }
+        return jsonError("Web Search xizmati vaqtincha javob bermadi. Birozdan keyin qayta urinib ko‘ring.", 503);
+      }
       if (!sources.length) {
-        return jsonError("Free web search providers are temporarily unavailable. Please try again in a moment.", 503);
+        return jsonError("Bu so‘rov bo‘yicha ishonchli qidiruv natijalari topilmadi. Boshqacha so‘rov yozib ko‘ring.", 404);
       }
     }
 
