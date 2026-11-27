@@ -23,19 +23,19 @@ function decodeHtml(value: string): string {
   return value
     .replace(/&amp;/g, "&").replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&#(\\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([\\da-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
 }
 
 function stripHtml(value: string): string {
-  return decodeHtml(value.replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ")).trim();
+  return decodeHtml(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ")).trim();
 }
 
 function extractDuckDuckGoResults(html: string): SearchSource[] {
   const results: SearchSource[] = [];
-  const blocks = html.match(/<div[^>]*class="[^"]*result[^"]*"[^>]*>[\\s\\S]*?(?=<div[^>]*class="[^"]*result[^"]*"|$)/gi) ?? [];
+  const blocks = html.match(/<div[^>]*class="[^"]*result[^"]*"[^>]*>[\s\S]*?(?=<div[^>]*class="[^"]*result[^"]*"|$)/gi) ?? [];
   for (const block of blocks) {
-    const link = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>/i);
+    const link = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
     if (!link) continue;
     let url = decodeHtml(link[1]);
     try {
@@ -45,7 +45,7 @@ function extractDuckDuckGoResults(html: string): SearchSource[] {
       else url = parsed.toString();
     } catch { continue; }
     if (!validSourceUrl(url) || new URL(url).hostname.endsWith("duckduckgo.com")) continue;
-    const snippetMatch = block.match(/<(?:a|div)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\\s\\S]*?)<\\/(?:a|div)>/i);
+    const snippetMatch = block.match(/<(?:a|div)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div)>/i);
     const title = stripHtml(link[2]);
     if (!title) continue;
     results.push({ title: title.slice(0, 180), url, snippet: snippetMatch ? stripHtml(snippetMatch[1]).slice(0, 1800) : "" });
