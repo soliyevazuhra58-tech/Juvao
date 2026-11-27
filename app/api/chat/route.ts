@@ -109,6 +109,41 @@ async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<Sea
   }
   return [];
 }
+
+async function searchViaCloudflareWorker(query: string, signal: AbortSignal): Promise<SearchSource[]> {
+  const workerUrl = process.env.JUVAO_SEARCH_WORKER_URL;
+  const secret = process.env.JUVAO_SEARCH_SECRET;
+  if (!workerUrl || !secret) return [];
+
+  const response = await fetch(workerUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${secret}`,
+    },
+    body: JSON.stringify({ query: query.slice(0, 500) }),
+    cache: "no-store",
+    signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+  });
+
+  if (!response.ok) {
+    console.warn("[JUVAO DDG Worker] HTTP", response.status);
+    return [];
+  }
+
+  const data = await response.json() as { results?: unknown };
+  if (!Array.isArray(data.results)) return [];
+  return data.results
+    .filter((item): item is SearchSource => {
+      if (!item || typeof item !== "object") return false;
+      const source = item as Record<string, unknown>;
+      return typeof source.title === "string" &&
+        typeof source.url === "string" && validSourceUrl(source.url) &&
+        typeof source.snippet === "string";
+    })
+    .slice(0, 5);
+}
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return jsonError("JUVAO is not configured yet. Please try again later.", 503);
@@ -145,7 +180,17 @@ export async function POST(request: NextRequest) {
     if (wantsSearch) {
       const query = safeMessages[safeMessages.length - 1].content.slice(0, 500);
       try {
-        sources = await searchDuckDuckGo(query, request.signal);
+        if (process.env.JUVAO_SEARCH_WORKER_URL && process.env.JUVAO_SEARCH_SECRET) {
+          try {
+            sources = await searchViaCloudflareWorker(query, request.signal);
+            console.info("[JUVAO DDG Worker] results", sources.length);
+          } catch (error) {
+            console.warn("[JUVAO DDG Worker] request failed:", error instanceof Error ? error.message : String(error));
+          }
+        }
+        if (!sources.length) {
+          sources = await searchDuckDuckGo(query, request.signal);
+        }
       } catch (error) {
         const reason = error instanceof Error ? error.message : "UNKNOWN";
         console.error("[JUVAO search] failed:", reason);
