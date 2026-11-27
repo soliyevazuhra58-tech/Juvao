@@ -33,7 +33,7 @@ function stripHtml(value: string): string {
 
 function extractDuckDuckGoResults(html: string): SearchSource[] {
   const results: SearchSource[] = [];
-  const blocks = html.match(/<div[^>]*class="[^"]*result[^"]*"[^>]*>[\s\S]*?(?=<div[^>]*class="[^"]*result[^"]*"|$)/gi) ?? [];
+  const blocks = html.match(/<div[^>]*class="result(?:\s|")[^"]*"[^>]*>[\s\S]*?(?=<div[^>]*class="result(?:\s|")[^"]*"|$)/gi) ?? [];
   for (const block of blocks) {
     const link = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
     if (!link) continue;
