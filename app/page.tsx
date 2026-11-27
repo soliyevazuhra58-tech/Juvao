@@ -5,10 +5,11 @@ import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
-  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen
+  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink
 } from "lucide-react";
 
-type Message = { id: string; role: "user" | "assistant"; content: string };
+type SearchSource = { title: string; url: string; snippet: string };
+type Message = { id: string; role: "user" | "assistant"; content: string; sources?: SearchSource[] };
 type Chat = { id: string; title: string; messages: Message[]; updatedAt: number };
 type Theme = "light" | "dark";
 
@@ -38,6 +39,7 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
+  const [webSearch, setWebSearch] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -138,6 +140,8 @@ export default function Home() {
     setError("");
     setInput("");
 
+    const autoSearch = /\\b(latest|today|current|currently|recent|news|price|weather|2026|internetdan|qidir|manba|source|yangilik|bugun|hozir|narx|kurs)\\b/i.test(text);
+    const useWebSearch = webSearch || autoSearch;
     const userMessage: Message = { id: makeId(), role: "user", content: text };
     const assistantMessage: Message = { id: makeId(), role: "assistant", content: "" };
     const previousMessages = activeChat.messages;
@@ -160,6 +164,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [...previousMessages, userMessage].map(({ role, content }) => ({ role, content })),
+          webSearch: useWebSearch,
         }),
         signal: controller.signal,
       });
@@ -200,6 +205,12 @@ export default function Home() {
           if (!payload || payload === "[DONE]") continue;
           try {
             const data = JSON.parse(payload);
+            if (Array.isArray(data.sources)) {
+              setChats((prev) => prev.map((chat) => chat.id === activeChat.id
+                ? { ...chat, messages: chat.messages.map((message) => message.id === assistantMessage.id ? { ...message, sources: data.sources } : message) }
+                : chat
+              ));
+            }
             const token = data.choices?.[0]?.delta?.content;
             if (typeof token === "string" && token) {
               receivedText += token;
@@ -381,6 +392,20 @@ export default function Home() {
                           </button>
                         </div>
                       )}
+                      {message.role === "assistant" && message.sources && message.sources.length > 0 && (
+                        <div className="source-list">
+                          <div className="source-heading"><Globe size={13} /> Sources</div>
+                          <div className="source-items">
+                            {message.sources.map((source, index) => (
+                              <a className="source-item" href={source.url} target="_blank" rel="noreferrer" key={source.url}>
+                                <span className="source-number">{index + 1}</span>
+                                <span className="source-text"><strong>{source.title}</strong><small>{new URL(source.url).hostname}</small></span>
+                                <ExternalLink size={12} />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -404,7 +429,7 @@ export default function Home() {
               aria-label="Message JUVAO"
             />
             <div className="composer-footer">
-              <span className="composer-hint">Enter to send · Shift + Enter for a new line</span>
+              <div className="composer-tools"><button type="button" className={`web-search-toggle ${webSearch ? "enabled" : ""}`} onClick={() => setWebSearch((value) => !value)} aria-pressed={webSearch} title="Search the web"><Globe size={14} /><span>Web search</span></button><span className="composer-hint">{webSearch ? "Web search on" : "Enter to send · Shift + Enter"}</span></div>
               <button className="send-button" type="submit" disabled={!input.trim() || streaming} aria-label="Send message">
                 {streaming ? <span className="send-loader" /> : <ArrowUp size={18} />}
               </button>
