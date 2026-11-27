@@ -33,21 +33,28 @@ function stripHtml(value: string): string {
 
 function extractDuckDuckGoResults(html: string): SearchSource[] {
   const results: SearchSource[] = [];
-  const blocks = html.match(/<div[^>]*class="result(?:\s|")[^"]*"[^>]*>[\s\S]*?(?=<div[^>]*class="result(?:\s|")[^"]*"|$)/gi) ?? [];
-  for (const block of blocks) {
-    const link = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
-    if (!link) continue;
-    let url = decodeHtml(link[1]);
+  const anchors = html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) ?? [];
+  for (const anchor of anchors) {
+    const classMatch = anchor.match(/class=["']([^"']+)["']/i);
+    if (!classMatch || !/(?:result__a|result-link)/i.test(classMatch[1])) continue;
+    const hrefMatch = anchor.match(/href=["']([^"']+)["']/i);
+    if (!hrefMatch) continue;
+    let url = decodeHtml(hrefMatch[1]);
     try {
       if (url.startsWith("//")) url = "https:" + url;
       const parsed = new URL(url, "https://duckduckgo.com");
-      if (parsed.hostname.endsWith("duckduckgo.com") && parsed.pathname === "/l/") url = parsed.searchParams.get("uddg") || "";
-      else url = parsed.toString();
+      if (parsed.hostname.endsWith("duckduckgo.com") && parsed.pathname === "/l/") {
+        url = parsed.searchParams.get("uddg") || "";
+      } else {
+        url = parsed.toString();
+      }
     } catch { continue; }
     if (!validSourceUrl(url) || new URL(url).hostname.endsWith("duckduckgo.com")) continue;
-    const snippetMatch = block.match(/<(?:a|div)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div)>/i);
-    const title = stripHtml(link[2]);
+    const title = stripHtml(anchor.replace(/<a\b[^>]*>/i, "").replace(/<\/a>$/i, ""));
     if (!title) continue;
+    const anchorIndex = html.indexOf(anchor);
+    const context = html.slice(Math.max(0, anchorIndex - 1000), Math.min(html.length, anchorIndex + anchor.length + 1800));
+    const snippetMatch = context.match(/class=["'][^"']*(?:result__snippet|result-snippet)[^"']*["'][^>]*>([\s\S]*?)<\//i);
     results.push({ title: title.slice(0, 180), url, snippet: snippetMatch ? stripHtml(snippetMatch[1]).slice(0, 1800) : "" });
     if (results.length >= 5) break;
   }
@@ -97,10 +104,17 @@ async function searchWithoutApiKey(query: string, signal: AbortSignal): Promise<
         cache: "no-store",
         signal: AbortSignal.any([signal, AbortSignal.timeout(7000)]),
       });
-      if (!response.ok) continue;
-      const results = attempt.parse(await response.text());
+      if (!response.ok) {
+        console.warn("[JUVAO search] provider returned", response.status, attempt.url.hostname);
+        continue;
+      }
+      const content = await response.text();
+      const results = attempt.parse(content);
+      console.info("[JUVAO search] provider", attempt.url.hostname, "status", response.status, "parsed", results.length, "bytes", content.length);
       if (results.length) return results;
-    } catch {
+      console.warn("[JUVAO search] no results parsed from", attempt.url.hostname, "content-type", response.headers.get("content-type"));
+    } catch (error) {
+      console.warn("[JUVAO search] provider failed", attempt.url.hostname, error instanceof Error ? error.message : String(error));
       if (signal.aborted) throw new Error("Search cancelled");
     }
   }
