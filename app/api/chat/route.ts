@@ -84,6 +84,7 @@ async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<Sea
     "https://duckduckgo.com/html/",
     "https://html.duckduckgo.com/html/",
     "https://lite.duckduckgo.com/lite/",
+    "https://duckduckgo.com/",
   ];
   let sawForbidden = false;
 
