@@ -60,6 +60,7 @@ export default function Home() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const stopTypingRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     try {
@@ -167,6 +168,7 @@ export default function Home() {
   }
 
   function stopGeneration() {
+    stopTypingRef.current?.();
     abortRef.current?.abort();
   }
 
@@ -243,8 +245,8 @@ export default function Home() {
       let pendingText = "";
       typingTimer = window.setInterval(() => {
         if (!pendingText.length) return;
-        const next = pendingText.slice(0, 6);
-        pendingText = pendingText.slice(6);
+        const next = pendingText.slice(0, 24);
+        pendingText = pendingText.slice(24);
         displayedText += next;
         setChats((prev) => prev.map((chat) => chat.id === activeChat.id
           ? {
@@ -256,7 +258,11 @@ export default function Home() {
             }
           : chat
         ));
-      }, 10);
+      }, 8);
+      stopTypingRef.current = () => {
+        pendingText = "";
+        if (typingTimer !== undefined) window.clearInterval(typingTimer);
+      };
 
       const consumeEvent = (event: string) => {
         for (const line of event.split("\n")) {
@@ -289,7 +295,7 @@ export default function Home() {
         if (done) break;
       }
       if (buffer.trim()) consumeEvent(buffer);
-      while (pendingText.length) await new Promise((resolve) => window.setTimeout(resolve, 10));
+      while (pendingText.length && !controller.signal.aborted) await new Promise((resolve) => window.setTimeout(resolve, 8));
       window.clearInterval(typingTimer);
       if (!receivedText) throw new Error("No response was received. Please try again.");
     } catch (err) {
@@ -322,6 +328,7 @@ export default function Home() {
       if (typingTimer !== undefined) window.clearInterval(typingTimer);
       setStreaming(false);
       abortRef.current = null;
+      stopTypingRef.current = null;
       textareaRef.current?.focus();
     }
   }
@@ -499,7 +506,6 @@ export default function Home() {
               onKeyDown={onKeyDown}
               placeholder="Message JUVAO..."
               rows={1}
-              disabled={streaming}
               aria-label="Message JUVAO"
             />
             <div className="composer-footer">
