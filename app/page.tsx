@@ -60,6 +60,7 @@ export default function Home() {
   const [editDraft, setEditDraft] = useState("");
   const [popupMenu, setPopupMenu] = useState<PopupMenu>(null);
   const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -421,16 +422,15 @@ export default function Home() {
                   const x = touch.clientX;
                   const y = touch.clientY;
                   clearLongPress();
-                  longPressTimerRef.current = window.setTimeout(() => setPopupMenu({ kind: "chat", id: chat.id, x, y }), 520);
+                  longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; setPopupMenu({ kind: "chat", id: chat.id, x, y }); }, 520);
                 }}
                 onTouchEnd={clearLongPress}
                 onTouchMove={clearLongPress}
               >
-                <button className="chat-select" onClick={() => { setPopupMenu(null); setActiveId(chat.id); setMobileSidebar(false); }}>
+                <button className="chat-select" onClick={(event) => { if (longPressTriggeredRef.current) { event.preventDefault(); longPressTriggeredRef.current = false; return; } setPopupMenu(null); setActiveId(chat.id); setMobileSidebar(false); }}>
                   <MessageSquarePlus size={15} />
                   <span>{chat.title}</span>
                 </button>
-                <button className="chat-delete" onClick={() => deleteChat(chat.id)} aria-label="Delete conversation"><Trash2 size={14} /></button>
               </div>
             ))}
             {filteredChats.length === 0 && <p className="empty-search">No conversations found</p>}
