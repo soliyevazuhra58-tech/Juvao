@@ -39,6 +39,15 @@ function getCodeText(node: ReactNode): string {
   return "";
 }
 
+function PythonIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2.5c-4.7 0-4.4 2-4.4 2v3.1h4.5v1H5.8S2.5 8.2 2.5 13s2.9 4.8 2.9 4.8h1.8v-2.4s-.1-2.9 2.9-2.9h5s2.8 0 2.8-2.8V5.1s.4-2.6-5.9-2.6ZM9.5 4.4a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8Z" fill="#3776AB"/>
+      <path d="M12 21.5c4.7 0 4.4-2 4.4-2v-3.1h-4.5v-1h6.3s3.3.4 3.3-4.4-2.9-4.8-2.9-4.8h-1.8v2.4s.1 2.9-2.9 2.9h-5s-2.8 0-2.8 2.8v4.6s-.4 2.6 5.9 2.6Zm2.5-1.9a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8Z" fill="#FFD343"/>
+    </svg>
+  );
+}
+
 function CodeBlock({ children }: { children: ReactNode }) {
   const [copied, setCopied] = useState(false);
   const codeNode = Children.toArray(children).find((child) => isValidElement(child)) as ReactElement<{ className?: string; children?: ReactNode }> | undefined;
@@ -76,7 +85,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
   return (
     <div className="code-block">
       <div className="code-block-header">
-        <span className="code-language"><LanguageIcon size={14} strokeWidth={1.9} />{language}</span>
+        <span className="code-language">{rawLanguage === "py" || rawLanguage === "python" ? <PythonIcon size={16} /> : <LanguageIcon size={14} strokeWidth={1.9} />}{language}</span>
         <button className="code-copy-button" type="button" onClick={copyCode} aria-label="Copy code">
           {copied ? <Check size={13} /> : <Copy size={13} />}
           {copied ? "Copied" : "Copy"}
