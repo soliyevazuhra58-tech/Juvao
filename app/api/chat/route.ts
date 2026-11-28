@@ -174,6 +174,59 @@ export async function POST(request: NextRequest) {
     return jsonError("The message could not be read. Please try again.", 400);
   }
 
+  if (body.task === "title") {
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      return jsonError("Please provide a conversation to name.", 400);
+    }
+    const titleMessages = (body.messages as unknown[])
+      .filter((item): item is ChatMessage => {
+        if (!item || typeof item !== "object") return false;
+        const message = item as Record<string, unknown>;
+        return (message.role === "user" || message.role === "assistant") &&
+          typeof message.content === "string";
+      })
+      .slice(-4)
+      .map(({ role, content }) => ({ role, content: content.slice(0, 1200) }));
+    if (!titleMessages.some((message) => message.role === "user")) {
+      return jsonError("Please provide a user message to name this chat.", 400);
+    }
+    try {
+      const titleResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+          messages: [
+            {
+              role: "system",
+              content: "Create a short, clear conversation title in the same language as the user. Return only the title, 2 to 6 words, no quotation marks, no explanation, no ending punctuation.",
+            },
+            ...titleMessages,
+          ],
+          stream: false,
+          max_completion_tokens: 40,
+          temperature: 0.3,
+        }),
+        cache: "no-store",
+        signal: request.signal,
+      });
+      if (!titleResponse.ok) return jsonError("Could not generate a chat title.", 502);
+      const titleData = await titleResponse.json();
+      const title = String(titleData.choices?.[0]?.message?.content || "")
+        .replace(/^["'`]+|["'`]+$/g, "")
+        .replace(/[.!?]+$/, "")
+        .trim()
+        .slice(0, 48);
+      if (!title) return jsonError("Could not generate a chat title.", 502);
+      return Response.json({ title });
+    } catch {
+      return jsonError("Could not generate a chat title.", 502);
+    }
+  }
+
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return jsonError("Please send a message to continue.", 400);
   }
