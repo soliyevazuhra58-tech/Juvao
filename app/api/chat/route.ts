@@ -231,15 +231,27 @@ export async function POST(request: NextRequest) {
     return jsonError("Please send a message to continue.", 400);
   }
 
-  const safeMessages = (body.messages as unknown[])
+  // Keep the newest conversation context while preventing oversized Groq payloads.
+  const validMessages = (body.messages as unknown[])
     .filter((item): item is ChatMessage => {
       if (!item || typeof item !== "object") return false;
       const message = item as Record<string, unknown>;
       return (message.role === "user" || message.role === "assistant") &&
         typeof message.content === "string";
     })
-    .slice(-24)
-    .map(({ role, content }) => ({ role, content: content.slice(0, 16000) }));
+    .slice(-24);
+
+  const safeMessages: ChatMessage[] = [];
+  let remainingChars = 24000;
+  for (let i = validMessages.length - 1; i >= 0; i--) {
+    const message = validMessages[i];
+    const perMessageLimit = i === validMessages.length - 1 ? 12000 : 6000;
+    const content = message.content.slice(0, Math.min(perMessageLimit, remainingChars));
+    if (!content && safeMessages.length) break;
+    safeMessages.unshift({ role: message.role, content });
+    remainingChars -= content.length;
+    if (remainingChars <= 0) break;
+  }
 
   if (!safeMessages.length || safeMessages[safeMessages.length - 1].role !== "user") {
     return jsonError("Please send a new message to continue.", 400);
@@ -304,6 +316,9 @@ export async function POST(request: NextRequest) {
       console.error("[JUVAO Groq] upstream error", upstream.status, upstreamMessage || upstreamBody.slice(0, 500));
       if (upstream.status === 401 || upstream.status === 403) {
         return jsonError("JUVAO API kaliti noto‘g‘ri yoki ruxsati yo‘q. Vercel Environment Variables ichidagi GROQ_API_KEY ni tekshiring.", 502);
+      }
+      if (upstream.status === 413) {
+        return jsonError("Xabarlar tarixi juda katta edi. JUVAO suhbat kontekstini qisqartirdi — qayta yuborib ko‘ring.", 413);
       }
       if (upstream.status === 429) {
         return jsonError("JUVAO hozir juda ko‘p so‘rov oldi yoki API limiti tugadi. Birozdan keyin qayta urinib ko‘ring.", 429);
