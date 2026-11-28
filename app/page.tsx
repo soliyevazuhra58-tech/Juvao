@@ -3,6 +3,8 @@
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import {
   ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
   PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink
@@ -377,7 +379,8 @@ export default function Home() {
                         ) : (
                           <div className="markdown-body">
                             <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
+                              remarkPlugins={[remarkGfm, remarkMath]}
+                              rehypePlugins={[rehypeKatex]}
                               components={markdownComponents}
                             >{message.content}</ReactMarkdown>
                             {streaming && message.role === "assistant" && message === messages[messages.length - 1] && <span className="typing-cursor" />}
