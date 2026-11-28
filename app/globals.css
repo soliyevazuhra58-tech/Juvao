@@ -274,3 +274,72 @@ kbd { font: 10px 'DM Sans', sans-serif; color: var(--subtle); padding: 2px 5px; 
   .modal-header h2 { font-size: 21px; }
   .katex { font-size: .96em; }
 }
+
+
+/* Responsive composer: keep keystrokes out of the React render cycle */
+.edit-message-input {
+  display: block;
+  width: 100%;
+  min-width: min(100%, 280px);
+  min-height: 58px;
+  max-height: 240px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  outline: none;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.edit-message-input:focus { border-color: var(--accent); }
+.user-message-actions { justify-content: flex-end; }
+.user-message-actions button { min-height: 28px; }
+.markdown-body pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0;
+  background: transparent;
+  color: #24292f;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.markdown-body pre code .hljs-comment,
+.markdown-body pre code .hljs-quote { color: #6e7781; font-style: italic; }
+.markdown-body pre code .hljs-keyword,
+.markdown-body pre code .hljs-selector-tag,
+.markdown-body pre code .hljs-literal { color: #cf222e; font-weight: 600; }
+.markdown-body pre code .hljs-string,
+.markdown-body pre code .hljs-doctag { color: #0a7b45; }
+.markdown-body pre code .hljs-number,
+.markdown-body pre code .hljs-built_in,
+.markdown-body pre code .hljs-type { color: #0550ae; }
+.markdown-body pre code .hljs-title,
+.markdown-body pre code .hljs-function,
+.markdown-body pre code .hljs-section { color: #8250df; }
+.markdown-body pre code .hljs-attr,
+.markdown-body pre code .hljs-attribute,
+.markdown-body pre code .hljs-variable { color: #953800; }
+.markdown-body pre code .hljs-meta,
+.markdown-body pre code .hljs-symbol { color: #116329; }
+:root[data-theme="dark"] .markdown-body pre code.hljs { color: #e6edf3; }
+:root[data-theme="dark"] .markdown-body pre code .hljs-comment,
+:root[data-theme="dark"] .markdown-body pre code .hljs-quote { color: #8b949e; }
+:root[data-theme="dark"] .markdown-body pre code .hljs-keyword,
+:root[data-theme="dark"] .markdown-body pre code .hljs-selector-tag,
+:root[data-theme="dark"] .markdown-body pre code .hljs-literal { color: #ff7b72; }
+:root[data-theme="dark"] .markdown-body pre code .hljs-string,
+:root[data-theme="dark"] .markdown-body pre code .hljs-doctag { color: #a5d6ff; }
+:root[data-theme="dark"] .markdown-body pre code .hljs-number,
+:root[data-theme="dark"] .markdown-body pre code .hljs-built_in,
+:root[data-theme="dark"] .markdown-body pre code .hljs-type { color: #79c0ff; }
+:root[data-theme="dark"] .markdown-body pre code .hljs-title,
+:root[data-theme="dark"] .markdown-body pre code .hljs-function,
+:root[data-theme="dark"] .markdown-body pre code .hljs-section { color: #d2a8ff; }
+:root[data-theme="dark"] .markdown-body pre code .hljs-attr,
+:root[data-theme="dark"] .markdown-body pre code .hljs-attribute,
+:root[data-theme="dark"] .markdown-body pre code .hljs-variable { color: #ffa657; }
+:root[data-theme="dark"] .markdown-body pre code .hljs-meta,
+:root[data-theme="dark"] .markdown-body pre code .hljs-symbol { color: #7ee787; }
