@@ -119,6 +119,7 @@ export default function Home() {
   const longPressTriggeredRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popupMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -183,9 +184,29 @@ export default function Home() {
 
   useEffect(() => {
     const container = conversationScrollRef.current;
-    if (!container) return;
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    if (!container || scrollFrameRef.current !== null) return;
+    const followLatest = () => {
+      const current = conversationScrollRef.current;
+      if (!current) {
+        scrollFrameRef.current = null;
+        return;
+      }
+      const target = Math.max(0, current.scrollHeight - current.clientHeight);
+      const distance = target - current.scrollTop;
+      if (Math.abs(distance) < 0.75) {
+        current.scrollTop = target;
+        scrollFrameRef.current = null;
+        return;
+      }
+      current.scrollTop += distance * 0.22;
+      scrollFrameRef.current = window.requestAnimationFrame(followLatest);
+    };
+    scrollFrameRef.current = window.requestAnimationFrame(followLatest);
   }, [messages]);
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+  }, []);
 
 
 
