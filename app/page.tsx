@@ -54,7 +54,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
   const codeClass = codeNode?.props.className ?? "";
   const rawLanguage = codeClass.match(/language-([\w+#.-]+)/i)?.[1]?.toLowerCase() ?? "";
   const languageNames: Record<string, string> = {
-    js: "JavaScript", jsx: "JSX", ts: "TypeScript", tsx: "TSX", py: "Python",
+    js: "JavaScript", jsx: "JSX", ts: "TypeScript", tsx: "TSX", py: "Python", python: "Python",
     html: "HTML", css: "CSS", json: "JSON", bash: "Bash", sh: "Shell",
     shell: "Shell", sql: "SQL", java: "Java", c: "C", cpp: "C++",
     cs: "C#", go: "Go", rs: "Rust", php: "PHP", rb: "Ruby",
