@@ -529,13 +529,11 @@ export default function Home() {
                           </div>
                         )}
                       </div>
-                      {message.role === "user" && !streaming && (
-                        {editingMessageId === message.id && (
-                          <div className="message-actions user-message-actions">
-                            <button onClick={() => saveEdit(message.id)} disabled={!editDraft.trim()}><Check size={14} /> Save & resend</button>
-                            <button onClick={cancelEdit}><X size={14} /> Cancel</button>
-                          </div>
-                        )}
+                      {message.role === "user" && !streaming && editingMessageId === message.id && (
+                        <div className="message-actions user-message-actions">
+                          <button onClick={() => saveEdit(message.id)} disabled={!editDraft.trim()}><Check size={14} /> Save & resend</button>
+                          <button onClick={cancelEdit}><X size={14} /> Cancel</button>
+                        </div>
                       )}
                       {message.role === "assistant" && message.content && (
                         <div className="message-actions">
@@ -601,7 +599,7 @@ export default function Home() {
       </section>
       {popupMenu && (
         <div className="selection-popup" role="menu"
-          style={{ left: Math.max(12, Math.min(popupMenu.x, window.innerWidth - 12)), top: Math.max(12, Math.min(popupMenu.y, window.innerHeight - 60)) }}
+          style={{ left: popupMenu.x, top: popupMenu.y }}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}>
           {popupMenu.kind === "message" ? (
