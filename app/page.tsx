@@ -25,33 +25,10 @@ const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.
 
 function normalizeMathDelimiters(value: string): string {
   return value
-    .replace(/\\\\\\[([\\s\\S]*?)\\\\\\]/g, (_, formula: string) => `$\\n${formula.trim()}\\n$`)
-    .replace(/\\\\\\(([\\s\\S]*?)\\\\\\)/g, (_, formula: string) => `${formula.trim()}"use client";
-
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown, { Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import {
-  ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
-  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink,
-  UserRound, Settings, StopCircle, Save
-} from "lucide-react";
-
-type SearchSource = { title: string; url: string; snippet: string };
-type Message = { id: string; role: "user" | "assistant"; content: string; sources?: SearchSource[] };
-type Chat = { id: string; title: string; messages: Message[]; updatedAt: number };
-type Theme = "light" | "dark";
-type UserProfile = { name: string; age: number };
-type Panel = "onboarding" | "profile" | "settings" | null;
-
-const STORAGE_KEY = "juvao.chats.v2";
-const THEME_KEY = "juvao.theme";
-const PROFILE_KEY = "juvao.profile.v1";
-const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-);
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, formula: string) => \`$$
+\${formula.trim()}
+$$\`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula: string) => \`$\${formula.trim()}$\`);
 }
 
 const markdownComponents: Components = {
