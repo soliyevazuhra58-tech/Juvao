@@ -5,8 +5,9 @@ import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
 import {
-  ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
+  ArrowUp, Check, Copy, Edit3, Menu, MessageSquarePlus, Moon, PanelLeftClose,
   PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink,
   UserRound, Settings, StopCircle, Save
 } from "lucide-react";
@@ -21,7 +22,6 @@ type Panel = "onboarding" | "profile" | "settings" | null;
 const STORAGE_KEY = "juvao.chats.v2";
 const THEME_KEY = "juvao.theme";
 const PROFILE_KEY = "juvao.profile.v1";
-const WEB_SEARCH_KEY = "juvao.web-search";
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 function normalizeMathDelimiters(value: string): string {
@@ -44,7 +44,6 @@ const suggestions = [
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState("");
-  const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebar, setMobileSidebar] = useState(false);
@@ -52,11 +51,12 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
-  const [webSearch, setWebSearch] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileAge, setProfileAge] = useState("");
   const [panel, setPanel] = useState<Panel>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -66,8 +66,6 @@ export default function Home() {
     try {
       const savedTheme = localStorage.getItem(THEME_KEY);
       if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
-      const savedSearch = localStorage.getItem(WEB_SEARCH_KEY);
-      if (savedSearch === "true") setWebSearch(true);
       const savedProfile = localStorage.getItem(PROFILE_KEY);
       if (savedProfile) {
         const parsedProfile = JSON.parse(savedProfile) as UserProfile;
@@ -105,10 +103,6 @@ export default function Home() {
     if (chats.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
   }, [chats]);
 
-  useEffect(() => {
-    localStorage.setItem(WEB_SEARCH_KEY, String(webSearch));
-  }, [webSearch]);
-
   const activeChat = chats.find((chat) => chat.id === activeId) ?? chats[0];
   const messages = activeChat?.messages ?? [];
   const filteredChats = useMemo(
@@ -121,13 +115,6 @@ export default function Home() {
   }, [messages]);
 
 
-
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${Math.min(el.scrollHeight, 190)}px`;
-  }, [input]);
 
   useEffect(() => {
     const onShortcut = (event: globalThis.KeyboardEvent) => {
@@ -177,7 +164,7 @@ export default function Home() {
     const chat: Chat = { id: makeId(), title: "New chat", messages: [], updatedAt: Date.now() };
     setChats((prev) => [chat, ...prev]);
     setActiveId(chat.id);
-    setInput("");
+    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; }
     setError("");
     setMobileSidebar(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
@@ -196,17 +183,21 @@ export default function Home() {
     }
   }
 
-  async function sendMessage(value?: string) {
-    const text = (value ?? input).trim();
+  async function sendMessage(value?: string, editMessageId?: string) {
+    const text = (value ?? textareaRef.current?.value ?? "").trim();
     if (!text || streaming || !activeChat) return;
     setError("");
-    setInput("");
+    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; }
 
     const autoSearch = /\b(latest|today|current|currently|recent|news|price|weather|2026|internetdan|qidir|manba|source|yangilik|bugun|hozir|narx|kurs)\b/i.test(text);
-    const useWebSearch = webSearch || autoSearch;
-    const userMessage: Message = { id: makeId(), role: "user", content: text };
+    const useWebSearch = autoSearch;
+    const editIndex = editMessageId ? activeChat.messages.findIndex((message) => message.id === editMessageId && message.role === "user") : -1;
+    if (editMessageId && editIndex < 0) return;
+    const previousMessages = editIndex >= 0 ? activeChat.messages.slice(0, editIndex) : activeChat.messages;
+    const userMessage: Message = editIndex >= 0
+      ? { ...activeChat.messages[editIndex], content: text }
+      : { id: makeId(), role: "user", content: text };
     const assistantMessage: Message = { id: makeId(), role: "assistant", content: "" };
-    const previousMessages = activeChat.messages;
     const title = previousMessages.length === 0
       ? text.slice(0, 48) + (text.length > 48 ? "…" : "")
       : activeChat.title;
@@ -333,6 +324,25 @@ export default function Home() {
     }
   }
 
+  function beginEdit(message: Message) {
+    if (streaming) return;
+    setEditingMessageId(message.id);
+    setEditDraft(message.content);
+  }
+
+  function cancelEdit() {
+    setEditingMessageId(null);
+    setEditDraft("");
+  }
+
+  function saveEdit(messageId: string) {
+    const revised = editDraft.trim();
+    if (!revised || streaming) return;
+    setEditingMessageId(null);
+    setEditDraft("");
+    void sendMessage(revised, messageId);
+  }
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     sendMessage();
@@ -448,23 +458,42 @@ export default function Home() {
               <div className="message-stack">
                 {messages.map((message) => (
                   <article className={`message-row ${message.role === "user" ? "user-row" : "assistant-row"}`} key={message.id}>
-                    {message.role === "assistant" && <div className="assistant-avatar"><Coffee size={16} /></div>}
                     <div className="message-content-wrap">
                       {message.role === "assistant" && <div className="message-author">JUVAO</div>}
                       <div className={`message-bubble ${message.role === "user" ? "user-bubble" : "assistant-bubble"}`}>
                         {message.role === "assistant" && !message.content && streaming ? (
                           <div className="thinking"><span /><span /><span /><em>Thinking</em></div>
+                        ) : message.role === "user" && editingMessageId === message.id ? (
+                          <textarea
+                            className="edit-message-input"
+                            value={editDraft}
+                            onChange={(event) => setEditDraft(event.target.value)}
+                            rows={Math.min(8, Math.max(2, editDraft.split("\n").length))}
+                            autoFocus
+                          />
                         ) : (
                           <div className="markdown-body">
                             <ReactMarkdown
                               remarkPlugins={[remarkMath, remarkGfm]}
-                              rehypePlugins={[rehypeKatex]}
+                              rehypePlugins={[rehypeKatex, rehypeHighlight]}
                               components={markdownComponents}
                             >{normalizeMathDelimiters(message.content)}</ReactMarkdown>
                             {streaming && message.role === "assistant" && message === messages[messages.length - 1] && <span className="typing-cursor" />}
                           </div>
                         )}
                       </div>
+                      {message.role === "user" && !streaming && (
+                        <div className="message-actions user-message-actions">
+                          {editingMessageId === message.id ? (
+                            <>
+                              <button onClick={() => saveEdit(message.id)} disabled={!editDraft.trim()}><Check size={14} /> Save & resend</button>
+                              <button onClick={cancelEdit}><X size={14} /> Cancel</button>
+                            </>
+                          ) : (
+                            <button onClick={() => beginEdit(message)}><Edit3 size={14} /> Edit</button>
+                          )}
+                        </div>
+                      )}
                       {message.role === "assistant" && message.content && (
                         <div className="message-actions">
                           <button onClick={() => copyMessage(message)} aria-label="Copy response">
@@ -501,21 +530,24 @@ export default function Home() {
           <form className="composer" onSubmit={onSubmit}>
             <textarea
               ref={textareaRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                const element = event.currentTarget;
+                element.style.height = "auto";
+                element.style.height = `${Math.min(element.scrollHeight, 190)}px`;
+              }}
               onKeyDown={onKeyDown}
               placeholder="Message JUVAO..."
               rows={1}
               aria-label="Message JUVAO"
             />
             <div className="composer-footer">
-              <div className="composer-tools"><button type="button" className={`web-search-toggle ${webSearch ? "enabled" : ""}`} onClick={() => setWebSearch((value) => !value)} aria-pressed={webSearch} title="Search the web"><Globe size={14} /><span>Web search</span></button><span className="composer-hint">{webSearch ? "Web search on" : "Enter to send · Shift + Enter"}</span></div>
+              <div className="composer-tools"><span className="composer-hint">Enter to send · Shift + Enter</span></div>
               {streaming ? (
                 <button className="send-button stop-button" type="button" onClick={stopGeneration} aria-label="Stop generating" title="Stop generating">
                   <StopCircle size={18} />
                 </button>
               ) : (
-                <button className="send-button" type="submit" disabled={!input.trim()} aria-label="Send message">
+                <button className="send-button" type="submit" aria-label="Send message">
                   <ArrowUp size={18} />
                 </button>
               )}
