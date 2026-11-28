@@ -37,50 +37,55 @@ function stripHtml(value: string): string {
 
 function extractDuckDuckGoResults(html: string): SearchSource[] {
   const results: SearchSource[] = [];
-  const blocks = html.split(/(?=<div\b[^>]*class=["'][^"']*result(?:\s|["'])|<tr\b[^>]*class=["'][^"']*result)/i);
-  for (const block of blocks) {
-    const link = block.match(/<a\b[^>]*class=["'][^"']*(?:result__a|result-link)[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i)
-      ?? block.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*class=["'][^"']*(?:result__a|result-link)[^"']*["'][^>]*>([\s\S]*?)<\/a>/i);
-    if (!link) continue;
+  const seen = new Set<string>();
+  const anchors = html.matchAll(/<a\\b([^>]*)>([\\s\\S]*?)<\\/a>/gi);
 
-    let url = decodeHtml(link[1].trim());
+  for (const match of anchors) {
+    const attrs = match[1];
+    const className = attrs.match(/class\\s*=\\s*["']([^"']*)["']/i)?.[1] || "";
+    if (!/(?:result__a|result-link)/i.test(className)) continue;
+    const rawHref = attrs.match(/href\\s*=\\s*["']([^"']+)["']/i)?.[1];
+    if (!rawHref) continue;
+
+    let target = decodeHtml(rawHref.trim());
     try {
-      if (url.startsWith("//")) url = "https:" + url;
-      const parsed = new URL(url, "https://duckduckgo.com");
-      if (parsed.hostname.endsWith("duckduckgo.com") && (parsed.pathname === "/l/" || parsed.pathname === "/")) {
-        url = parsed.searchParams.get("uddg") || parsed.searchParams.get("url") || "";
-      } else {
-        url = parsed.toString();
+      const parsed = new URL(target, "https://duckduckgo.com");
+      if (parsed.hostname.endsWith("duckduckgo.com")) {
+        target = parsed.searchParams.get("uddg") || parsed.searchParams.get("url") || "";
       }
-    } catch {
-      continue;
-    }
-    if (!validSourceUrl(url)) continue;
-    const hostname = new URL(url).hostname.toLowerCase();
-    if (hostname === "duckduckgo.com" || hostname.endsWith(".duckduckgo.com")) continue;
+      if (!validSourceUrl(target)) continue;
+      const parsedTarget = new URL(target);
+      if (parsedTarget.hostname === "duckduckgo.com" || parsedTarget.hostname.endsWith(".duckduckgo.com")) continue;
+      const title = stripHtml(match[2]).slice(0, 180);
+      if (!title || seen.has(parsedTarget.href)) continue;
 
-    const title = stripHtml(link[2]);
-    if (!title) continue;
-    const snippetMatch = block.match(/class=["'][^"']*(?:result__snippet|result-snippet|snippet)[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|td)>/i);
-    const source = { title: title.slice(0, 180), url, snippet: snippetMatch ? stripHtml(snippetMatch[1]).slice(0, 1800) : "" };
-    if (!results.some((item) => item.url === source.url)) results.push(source);
-    if (results.length >= 5) break;
+      const after = html.slice((match.index || 0) + match[0].length, (match.index || 0) + match[0].length + 1800);
+      const snippetMatch = after.match(/class=["'][^"']*(?:result__snippet|result-snippet|snippet)[^"']*["'][^>]*>([\\s\\S]*?)<\\/(?:a|div|td|span)>/i);
+      results.push({
+        title,
+        url: parsedTarget.href,
+        snippet: snippetMatch ? stripHtml(snippetMatch[1]).slice(0, 1200) : "",
+      });
+      seen.add(parsedTarget.href);
+      if (results.length >= 6) break;
+    } catch {}
   }
   return results;
 }
 
 async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<SearchSource[]> {
   const headers = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9,uz;q=0.8",
     "Referer": "https://duckduckgo.com/",
   };
-
   const endpoints = [
+    "https://duckduckgo.com/html/",
     "https://html.duckduckgo.com/html/",
     "https://lite.duckduckgo.com/lite/",
   ];
+  let sawForbidden = false;
 
   for (const endpoint of endpoints) {
     try {
@@ -91,22 +96,68 @@ async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<Sea
         headers,
         cache: "no-store",
         redirect: "follow",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(12000)]),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
       });
-      const html = await response.text();
+      if (response.status === 403 || response.status === 429) sawForbidden = true;
       if (!response.ok) {
         console.warn("[JUVAO DDG] HTTP", response.status, endpoint);
         continue;
       }
+      const html = await response.text();
       const results = extractDuckDuckGoResults(html);
       console.info("[JUVAO DDG] endpoint", endpoint, "status", response.status, "bytes", html.length, "results", results.length);
       if (results.length) return results;
-      console.warn("[JUVAO DDG] no results parsed; content-type:", response.headers.get("content-type"));
     } catch (error) {
       console.warn("[JUVAO DDG] request failed:", endpoint, error instanceof Error ? error.message : String(error));
       if (signal.aborted) throw new Error("SEARCH_CANCELLED");
     }
   }
+
+  // DuckDuckGo's public Instant Answer endpoint is a keyless fallback.
+  // It returns curated answers/related topics rather than a full web SERP.
+  try {
+    const api = new URL("https://api.duckduckgo.com/");
+    api.searchParams.set("q", query.slice(0, 500));
+    api.searchParams.set("format", "json");
+    api.searchParams.set("no_html", "1");
+    api.searchParams.set("skip_disambig", "1");
+    const response = await fetch(api, {
+      headers: { "Accept": "application/json", "User-Agent": headers["User-Agent"] },
+      cache: "no-store",
+      signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
+    });
+    if (response.ok) {
+      const data = await response.json() as {
+        AbstractText?: string; AbstractURL?: string; Heading?: string;
+        RelatedTopics?: Array<{ Text?: string; FirstURL?: string; Topics?: Array<{ Text?: string; FirstURL?: string }> }>;
+      };
+      const fallback: SearchSource[] = [];
+      if (data.AbstractText && validSourceUrl(data.AbstractURL)) {
+        fallback.push({ title: data.Heading || "DuckDuckGo Instant Answer", url: data.AbstractURL, snippet: data.AbstractText });
+      }
+      for (const item of data.RelatedTopics || []) {
+        const entries = Array.isArray(item.Topics) ? item.Topics : [item];
+        for (const entry of entries) {
+          if (entry.Text && validSourceUrl(entry.FirstURL) && !fallback.some((source) => source.url === entry.FirstURL)) {
+            fallback.push({ title: stripHtml(entry.Text).slice(0, 150), url: entry.FirstURL, snippet: stripHtml(entry.Text) });
+          }
+          if (fallback.length >= 5) break;
+        }
+        if (fallback.length >= 5) break;
+      }
+      if (fallback.length) {
+        console.info("[JUVAO DDG] Instant Answer fallback results", fallback.length);
+        return fallback;
+      }
+    } else {
+      console.warn("[JUVAO DDG] Instant Answer HTTP", response.status);
+    }
+  } catch (error) {
+    console.warn("[JUVAO DDG] Instant Answer failed:", error instanceof Error ? error.message : String(error));
+    if (signal.aborted) throw new Error("SEARCH_CANCELLED");
+  }
+
+  if (sawForbidden) console.error("[JUVAO DDG] all HTML endpoints blocked (403/429); Instant Answer fallback empty");
   return [];
 }
 
@@ -154,7 +205,7 @@ export async function POST(request: NextRequest) {
         return jsonError("DuckDuckGo qidiruvi vaqtincha javob bermadi. Vercel Logs bo‘limidagi [JUVAO DDG] yozuvlarini tekshiring.", 503);
       }
       if (!sources.length) {
-        return jsonError("Bu so‘rov bo‘yicha ishonchli qidiruv natijalari topilmadi. Boshqacha so‘rov yozib ko‘ring.", 404);
+        return jsonError("DuckDuckGo bu so‘rov uchun natija bermadi yoki server so‘rovlarni chekladi (403/429). Boshqa so‘rovni sinab ko‘ring.", 502);
       }
     }
 
