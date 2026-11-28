@@ -18,6 +18,7 @@ type Chat = { id: string; title: string; messages: Message[]; updatedAt: number 
 type Theme = "light" | "dark";
 type UserProfile = { name: string; age: number };
 type Panel = "onboarding" | "profile" | "settings" | null;
+type PopupMenu = { kind: "message" | "chat"; id: string; x: number; y: number } | null;
 
 const STORAGE_KEY = "juvao.chats.v2";
 const THEME_KEY = "juvao.theme";
@@ -57,6 +58,8 @@ export default function Home() {
   const [panel, setPanel] = useState<Panel>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [popupMenu, setPopupMenu] = useState<PopupMenu>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -349,10 +352,25 @@ export default function Home() {
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
       sendMessage();
     }
+  }
+
+  function clearLongPress() {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }
+
+  function selectMessageText(id: string) {
+    const element = document.getElementById("message-text-" + id);
+    if (!element) return;
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   }
 
   async function copyMessage(message: Message) {
@@ -394,8 +412,21 @@ export default function Home() {
           <div className="history-label">RECENTS</div>
           <div className="chat-list">
             {filteredChats.map((chat) => (
-              <div className={`chat-item ${chat.id === activeId ? "active" : ""}`} key={chat.id}>
-                <button className="chat-select" onClick={() => { setActiveId(chat.id); setMobileSidebar(false); }}>
+              <div
+                className={`chat-item ${chat.id === activeId ? "active" : ""}`}
+                key={chat.id}
+                onContextMenu={(event) => { event.preventDefault(); setPopupMenu({ kind: "chat", id: chat.id, x: event.clientX, y: event.clientY }); }}
+                onTouchStart={(event) => {
+                  const touch = event.touches[0];
+                  const x = touch.clientX;
+                  const y = touch.clientY;
+                  clearLongPress();
+                  longPressTimerRef.current = window.setTimeout(() => setPopupMenu({ kind: "chat", id: chat.id, x, y }), 520);
+                }}
+                onTouchEnd={clearLongPress}
+                onTouchMove={clearLongPress}
+              >
+                <button className="chat-select" onClick={() => { setPopupMenu(null); setActiveId(chat.id); setMobileSidebar(false); }}>
                   <MessageSquarePlus size={15} />
                   <span>{chat.title}</span>
                 </button>
@@ -457,7 +488,20 @@ export default function Home() {
             ) : (
               <div className="message-stack">
                 {messages.map((message) => (
-                  <article className={`message-row ${message.role === "user" ? "user-row" : "assistant-row"}`} key={message.id}>
+                  <article
+                    className={`message-row ${message.role === "user" ? "user-row" : "assistant-row"}`}
+                    key={message.id}
+                    onContextMenu={(event) => { event.preventDefault(); setPopupMenu({ kind: "message", id: message.id, x: event.clientX, y: event.clientY }); }}
+                    onTouchStart={(event) => {
+                      const touch = event.touches[0];
+                      const x = touch.clientX;
+                      const y = touch.clientY;
+                      clearLongPress();
+                      longPressTimerRef.current = window.setTimeout(() => setPopupMenu({ kind: "message", id: message.id, x, y }), 520);
+                    }}
+                    onTouchEnd={clearLongPress}
+                    onTouchMove={clearLongPress}
+                  >
                     <div className="message-content-wrap">
                       {message.role === "assistant" && <div className="message-author">JUVAO</div>}
                       <div className={`message-bubble ${message.role === "user" ? "user-bubble" : "assistant-bubble"}`}>
@@ -472,7 +516,7 @@ export default function Home() {
                             autoFocus
                           />
                         ) : (
-                          <div className="markdown-body">
+                          <div className="markdown-body" id={"message-text-" + message.id}>
                             <ReactMarkdown
                               remarkPlugins={[remarkMath, remarkGfm]}
                               rehypePlugins={[rehypeKatex, rehypeHighlight]}
@@ -483,16 +527,12 @@ export default function Home() {
                         )}
                       </div>
                       {message.role === "user" && !streaming && (
-                        <div className="message-actions user-message-actions">
-                          {editingMessageId === message.id ? (
-                            <>
-                              <button onClick={() => saveEdit(message.id)} disabled={!editDraft.trim()}><Check size={14} /> Save & resend</button>
-                              <button onClick={cancelEdit}><X size={14} /> Cancel</button>
-                            </>
-                          ) : (
-                            <button onClick={() => beginEdit(message)}><Edit3 size={14} /> Edit</button>
-                          )}
-                        </div>
+                        {editingMessageId === message.id && (
+                          <div className="message-actions user-message-actions">
+                            <button onClick={() => saveEdit(message.id)} disabled={!editDraft.trim()}><Check size={14} /> Save & resend</button>
+                            <button onClick={cancelEdit}><X size={14} /> Cancel</button>
+                          </div>
+                        )}
                       )}
                       {message.role === "assistant" && message.content && (
                         <div className="message-actions">
@@ -541,7 +581,7 @@ export default function Home() {
               aria-label="Message JUVAO"
             />
             <div className="composer-footer">
-              <div className="composer-tools"><span className="composer-hint">Enter to send · Shift + Enter</span></div>
+              <div className="composer-tools"><span className="composer-hint">Enter to send</span></div>
               {streaming ? (
                 <button className="send-button stop-button" type="button" onClick={stopGeneration} aria-label="Stop generating" title="Stop generating">
                   <StopCircle size={18} />
@@ -556,6 +596,42 @@ export default function Home() {
           <p className="disclaimer">JUVAO may make mistakes. Check important information.</p>
         </div>
       </section>
+      {popupMenu && (
+        <div className="selection-popup" role="menu"
+          style={{ left: Math.max(12, Math.min(popupMenu.x, window.innerWidth - 12)), top: Math.max(12, Math.min(popupMenu.y, window.innerHeight - 60)) }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}>
+          {popupMenu.kind === "message" ? (
+            <>
+              <button role="menuitem" onClick={() => {
+                const message = messages.find((item) => item.id === popupMenu.id);
+                if (message) void copyMessage(message);
+                setPopupMenu(null);
+              }}><Copy size={14} /> Copy</button>
+              {messages.find((item) => item.id === popupMenu.id)?.role === "user" && (
+                <>
+                  <span className="selection-divider" />
+                  <button role="menuitem" disabled={streaming} onClick={() => {
+                    const message = messages.find((item) => item.id === popupMenu.id);
+                    if (message) beginEdit(message);
+                    setPopupMenu(null);
+                  }}><Edit3 size={14} /> Edit</button>
+                </>
+              )}
+              <span className="selection-divider" />
+              <button role="menuitem" onClick={() => {
+                selectMessageText(popupMenu.id);
+                setPopupMenu(null);
+              }}><Check size={14} /> Select text</button>
+            </>
+          ) : (
+            <button role="menuitem" disabled={streaming} onClick={() => {
+              deleteChat(popupMenu.id);
+              setPopupMenu(null);
+            }}><Trash2 size={14} /> Delete chat</button>
+          )}
+        </div>
+      )}
       {panel && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget && panel !== "onboarding") setPanel(null);
