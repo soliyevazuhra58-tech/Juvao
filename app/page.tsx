@@ -7,7 +7,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import {
-  ArrowUp, Check, Copy, Edit3, Menu, MessageSquarePlus, Moon, PanelLeftClose,
+  ArrowUp, Check, Copy, Edit3, Menu, MessageSquarePlus, Moon, PanelLeftClose, Mic, MicOff,
   PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink,
   UserRound, Settings, StopCircle, Save, RefreshCw, Code2, Braces, FileCode2, Terminal, Database, FileJson
 } from "lucide-react";
@@ -23,6 +23,7 @@ type PopupMenu = { kind: "message" | "chat"; id: string; x: number; y: number } 
 const STORAGE_KEY = "juvao.chats.v2";
 const THEME_KEY = "juvao.theme";
 const PROFILE_KEY = "juvao.profile.v1";
+const PERSONALIZATION_KEY = "juvao.personalization.v1";
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 function normalizeMathDelimiters(value: string): string {
@@ -42,7 +43,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
   const [copied, setCopied] = useState(false);
   const codeNode = Children.toArray(children).find((child) => isValidElement(child)) as ReactElement<{ className?: string; children?: ReactNode }> | undefined;
   const codeClass = codeNode?.props.className ?? "";
-  const rawLanguage = codeClass.match(/language-([\\w+#.-]+)/i)?.[1]?.toLowerCase() ?? "";
+  const rawLanguage = codeClass.match(/language-([\w+#.-]+)/i)?.[1]?.toLowerCase() ?? "";
   const languageNames: Record<string, string> = {
     js: "JavaScript", jsx: "JSX", ts: "TypeScript", tsx: "TSX", py: "Python",
     html: "HTML", css: "CSS", json: "JSON", bash: "Bash", sh: "Shell",
@@ -111,6 +112,10 @@ export default function Home() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileAge, setProfileAge] = useState("");
+  const [personalization, setPersonalization] = useState("");
+  const [personalizationDraft, setPersonalizationDraft] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -137,6 +142,9 @@ export default function Home() {
     try {
       const savedTheme = localStorage.getItem(THEME_KEY);
       if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      const savedPersonalization = localStorage.getItem(PERSONALIZATION_KEY) || "";
+      setPersonalization(savedPersonalization);
+      setPersonalizationDraft(savedPersonalization);
       const savedProfile = localStorage.getItem(PROFILE_KEY);
       if (savedProfile) {
         const parsedProfile = JSON.parse(savedProfile) as UserProfile;
@@ -220,6 +228,35 @@ export default function Home() {
     setError("");
   }
 
+  function savePersonalization() {
+    const value = personalizationDraft.trim().slice(0, 2000);
+    setPersonalization(value);
+    localStorage.setItem(PERSONALIZATION_KEY, value);
+    setPanel(null);
+  }
+
+  function startVoiceInput() {
+    if (isRecording) { recognitionRef.current?.stop(); setIsRecording(false); return; }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) { setError("Voice input bu brauzerda qo‘llab-quvvatlanmaydi. Chrome’da sinab ko‘ring."); return; }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "uz-UZ";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results as any[]).map((item: any) => item[0]?.transcript || "").join("");
+      if (textareaRef.current) {
+        textareaRef.current.value = transcript;
+        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+      }
+    };
+    recognition.onerror = () => setIsRecording(false);
+    recognition.onend = () => { setIsRecording(false); recognitionRef.current = null; };
+    recognitionRef.current = recognition;
+    try { recognition.start(); setIsRecording(true); } catch { setIsRecording(false); }
+  }
+
   function openProfile() {
     setProfileName(profile?.name ?? "");
     setProfileAge(profile ? String(profile.age) : "");
@@ -288,6 +325,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: [...previousMessages, userMessage].map(({ role, content }) => ({ role, content })),
           webSearch: useWebSearch,
+          personalization,
         }),
         signal: controller.signal,
       });
@@ -684,30 +722,34 @@ export default function Home() {
         <div className="composer-area">
           {error && <div className="error-banner"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss error"><X size={14} /></button></div>}
           <form className="composer" onSubmit={onSubmit}>
-            <textarea
-              ref={textareaRef}
-              onChange={(event) => {
-                const element = event.currentTarget;
-                element.style.height = "auto";
-                const nextHeight = Math.min(element.scrollHeight, 120);
-                element.style.height = `${nextHeight}px`;
-                element.style.overflowY = element.scrollHeight > 120 ? "auto" : "hidden";
-              }}
-              onKeyDown={onKeyDown}
-              placeholder="Message JUVAO..."
-              rows={1}
-              aria-label="Message JUVAO"
-            />
-            <div className="composer-footer">
-              {streaming ? (
-                <button className="send-button stop-button" type="button" onClick={stopGeneration} aria-label="Stop generating" title="Stop generating">
-                  <StopCircle size={18} />
+            <div className="composer-input-area">
+              <textarea
+                ref={textareaRef}
+                onChange={(event) => {
+                  const element = event.currentTarget;
+                  element.style.height = "auto";
+                  const nextHeight = Math.min(element.scrollHeight, 120);
+                  element.style.height = `${nextHeight}px`;
+                  element.style.overflowY = element.scrollHeight > 120 ? "auto" : "hidden";
+                }}
+                onKeyDown={onKeyDown}
+                placeholder="Message JUVAO..."
+                rows={1}
+                aria-label="Message JUVAO"
+              />
+            </div>
+            <div className="composer-toolbar">
+              <span className="composer-hint">Enter — send</span>
+              <div className="composer-tools">
+                <button className={`voice-button ${isRecording ? "is-recording" : ""}`} type="button" onClick={startVoiceInput} aria-label={isRecording ? "Stop voice input" : "Voice input"} title={isRecording ? "Stop recording" : "Voice input"}>
+                  {isRecording ? <MicOff size={17} /> : <Mic size={17} />}
                 </button>
-              ) : (
-                <button className="send-button" type="submit" aria-label="Send message">
-                  <ArrowUp size={18} />
-                </button>
-              )}
+                {streaming ? (
+                  <button className="send-button stop-button" type="button" onClick={stopGeneration} aria-label="Stop generating" title="Stop generating"><StopCircle size={18} /></button>
+                ) : (
+                  <button className="send-button" type="submit" aria-label="Send message"><ArrowUp size={18} /></button>
+                )}
+              </div>
             </div>
           </form>
           <p className="disclaimer">JUVAO may make mistakes. Check important information.</p>
@@ -785,7 +827,13 @@ export default function Home() {
                   <div><strong>Profile</strong><small>{profile ? `${profile.name} · ${profile.age} yosh` : "Hali sozlanmagan"}</small></div>
                   <button className="settings-choice" onClick={openProfile}>Edit</button>
                 </div>
-                <p className="settings-note">Profil ma’lumotlari hozircha faqat shu qurilmaning brauzerida saqlanadi; hisoblararo sinxronlash mavjud emas.</p>
+                <div className="personalization-panel">
+                  <label htmlFor="juvao-personalization">Personalization</label>
+                  <p>JUVAO javoblarini sizga moslashtirishi uchun xohishlaringizni yozing. Masalan: javoblar qisqa bo‘lsin, o‘zbek tilida tushuntir, kodni izohlar bilan yoz.</p>
+                  <textarea id="juvao-personalization" value={personalizationDraft} onChange={(event) => setPersonalizationDraft(event.target.value)} maxLength={2000} rows={5} placeholder="JUVAO qanday javob berishini xohlaysiz?..." />
+                  <div className="personalization-footer"><small>{personalizationDraft.length}/2000</small><button className="modal-primary" type="button" onClick={savePersonalization}><Save size={15} /> Save preferences</button></div>
+                </div>
+                <p className="settings-note">Shaxsiylashtirish sozlamalari shu qurilmaning brauzerida saqlanadi va har bir yangi AI so‘roviga qo‘shiladi.</p>
               </div>
             )}
           </section>
