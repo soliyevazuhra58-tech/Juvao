@@ -132,7 +132,10 @@ export default function Home() {
         event.preventDefault();
         document.querySelector<HTMLInputElement>(".search-input")?.focus();
       }
-      if (event.key === "Escape") setMobileSidebar(false);
+      if (event.key === "Escape") {
+        setMobileSidebar(false);
+        setPopupMenu(null);
+      }
     };
     window.addEventListener("keydown", onShortcut);
     return () => window.removeEventListener("keydown", onShortcut);
@@ -627,6 +630,7 @@ export default function Home() {
           ) : (
             <button role="menuitem" disabled={streaming} onClick={() => {
               deleteChat(popupMenu.id);
+              longPressTriggeredRef.current = false;
               setPopupMenu(null);
             }}><Trash2 size={14} /> Delete chat</button>
           )}
