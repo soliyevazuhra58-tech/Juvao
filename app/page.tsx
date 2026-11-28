@@ -7,17 +7,52 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import {
   ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
-  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink
+  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink,
+  UserRound, Settings, StopCircle, Save
 } from "lucide-react";
 
 type SearchSource = { title: string; url: string; snippet: string };
 type Message = { id: string; role: "user" | "assistant"; content: string; sources?: SearchSource[] };
 type Chat = { id: string; title: string; messages: Message[]; updatedAt: number };
 type Theme = "light" | "dark";
+type UserProfile = { name: string; age: number };
+type Panel = "onboarding" | "profile" | "settings" | null;
 
 const STORAGE_KEY = "juvao.chats.v2";
 const THEME_KEY = "juvao.theme";
+const PROFILE_KEY = "juvao.profile.v1";
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+function normalizeMathDelimiters(value: string): string {
+  return value
+    .replace(/\\\\\\[([\\s\\S]*?)\\\\\\]/g, (_, formula: string) => `$\\n${formula.trim()}\\n$`)
+    .replace(/\\\\\\(([\\s\\S]*?)\\\\\\)/g, (_, formula: string) => `${formula.trim()}"use client";
+
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown, { Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import {
+  ArrowUp, Check, Copy, Menu, MessageSquarePlus, Moon, PanelLeftClose,
+  PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink,
+  UserRound, Settings, StopCircle, Save
+} from "lucide-react";
+
+type SearchSource = { title: string; url: string; snippet: string };
+type Message = { id: string; role: "user" | "assistant"; content: string; sources?: SearchSource[] };
+type Chat = { id: string; title: string; messages: Message[]; updatedAt: number };
+type Theme = "light" | "dark";
+type UserProfile = { name: string; age: number };
+type Panel = "onboarding" | "profile" | "settings" | null;
+
+const STORAGE_KEY = "juvao.chats.v2";
+const THEME_KEY = "juvao.theme";
+const PROFILE_KEY = "juvao.profile.v1";
+const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+);
+}
 
 const markdownComponents: Components = {
   table: ({ children }) => <div className="table-scroll" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
@@ -42,6 +77,10 @@ export default function Home() {
   const [copiedId, setCopiedId] = useState("");
   const [error, setError] = useState("");
   const [webSearch, setWebSearch] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileName, setProfileName] = useState("");
+  const [profileAge, setProfileAge] = useState("");
+  const [panel, setPanel] = useState<Panel>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -50,6 +89,19 @@ export default function Home() {
     try {
       const savedTheme = localStorage.getItem(THEME_KEY);
       if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      const savedProfile = localStorage.getItem(PROFILE_KEY);
+      if (savedProfile) {
+        const parsedProfile = JSON.parse(savedProfile) as UserProfile;
+        if (parsedProfile && typeof parsedProfile.name === "string" && Number.isFinite(parsedProfile.age)) {
+          setProfile(parsedProfile);
+          setProfileName(parsedProfile.name);
+          setProfileAge(String(parsedProfile.age));
+        } else {
+          setPanel("onboarding");
+        }
+      } else {
+        setPanel("onboarding");
+      }
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as Chat[];
@@ -111,6 +163,30 @@ export default function Home() {
     window.addEventListener("keydown", onShortcut);
     return () => window.removeEventListener("keydown", onShortcut);
   }, [streaming, chats, activeId]);
+
+  function saveProfile() {
+    const name = profileName.trim().slice(0, 40);
+    const age = Number(profileAge);
+    if (!name || !Number.isInteger(age) || age < 1 || age > 120) {
+      setError("Ismni kiriting va yoshni 1–120 oralig‘ida belgilang.");
+      return;
+    }
+    const next = { name, age };
+    setProfile(next);
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+    setPanel(null);
+    setError("");
+  }
+
+  function openProfile() {
+    setProfileName(profile?.name ?? "");
+    setProfileAge(profile ? String(profile.age) : "");
+    setPanel("profile");
+  }
+
+  function stopGeneration() {
+    abortRef.current?.abort();
+  }
 
   function newChat() {
     if (streaming) return;
@@ -237,7 +313,12 @@ export default function Home() {
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         setChats((prev) => prev.map((chat) => chat.id === activeChat.id
-          ? { ...chat, messages: chat.messages.filter((message) => message.id !== assistantMessage.id) }
+          ? {
+              ...chat,
+              messages: chat.messages.filter((message) =>
+                message.id !== assistantMessage.id || Boolean(message.content.trim())
+              ),
+            }
           : chat
         ));
       } else {
@@ -328,6 +409,14 @@ export default function Home() {
 
         <div className="sidebar-bottom">
           {sidebarOpen && <div className="sidebar-footnote">A little space for big ideas.</div>}
+          <button className="theme-row" onClick={openProfile}>
+            <UserRound size={16} />
+            {sidebarOpen && <><span>Profile</span><span className="theme-state">{profile?.name || "Set up"}</span></>}
+          </button>
+          <button className="theme-row" onClick={() => setPanel("settings")}>
+            <Settings size={16} />
+            {sidebarOpen && <span>Settings</span>}
+          </button>
           <button className="theme-row" onClick={() => setTheme((value) => value === "light" ? "dark" : "light")}>
             <span className="theme-icon">{theme === "light" ? <Moon size={16} /> : <Sun size={16} />}</span>
             {sidebarOpen && <><span>{theme === "light" ? "Dark appearance" : "Light appearance"}</span><span className="theme-state">{theme === "light" ? "Off" : "On"}</span></>}
@@ -379,10 +468,10 @@ export default function Home() {
                         ) : (
                           <div className="markdown-body">
                             <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkMath]}
+                              remarkPlugins={[remarkMath, remarkGfm]}
                               rehypePlugins={[rehypeKatex]}
                               components={markdownComponents}
-                            >{message.content}</ReactMarkdown>
+                            >{normalizeMathDelimiters(message.content)}</ReactMarkdown>
                             {streaming && message.role === "assistant" && message === messages[messages.length - 1] && <span className="typing-cursor" />}
                           </div>
                         )}
@@ -433,14 +522,61 @@ export default function Home() {
             />
             <div className="composer-footer">
               <div className="composer-tools"><button type="button" className={`web-search-toggle ${webSearch ? "enabled" : ""}`} onClick={() => setWebSearch((value) => !value)} aria-pressed={webSearch} title="Search the web"><Globe size={14} /><span>Web search</span></button><span className="composer-hint">{webSearch ? "Web search on" : "Enter to send · Shift + Enter"}</span></div>
-              <button className="send-button" type="submit" disabled={!input.trim() || streaming} aria-label="Send message">
-                {streaming ? <span className="send-loader" /> : <ArrowUp size={18} />}
-              </button>
+              {streaming ? (
+                <button className="send-button stop-button" type="button" onClick={stopGeneration} aria-label="Stop generating" title="Stop generating">
+                  <StopCircle size={18} />
+                </button>
+              ) : (
+                <button className="send-button" type="submit" disabled={!input.trim()} aria-label="Send message">
+                  <ArrowUp size={18} />
+                </button>
+              )}
             </div>
           </form>
           <p className="disclaimer">JUVAO may make mistakes. Check important information.</p>
         </div>
       </section>
+      {panel && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && panel !== "onboarding") setPanel(null);
+        }}>
+          <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="panel-title">
+            <div className="modal-header">
+              <div>
+                <p className="modal-eyebrow">JUVAO ACCOUNT</p>
+                <h2 id="panel-title">{panel === "onboarding" ? "Welcome to JUVAO" : panel === "profile" ? "Your profile" : "Settings"}</h2>
+              </div>
+              {panel !== "onboarding" && <button className="icon-button" onClick={() => setPanel(null)} aria-label="Close"><X size={18} /></button>}
+            </div>
+            {panel === "onboarding" || panel === "profile" ? (
+              <form className="profile-form" onSubmit={(event) => { event.preventDefault(); saveProfile(); }}>
+                {panel === "onboarding" && <p className="modal-description">Boshlash uchun ismingiz va yoshingizni kiriting. Bu ma’lumotlar faqat ushbu brauzer qurilmasida saqlanadi.</p>}
+                <label htmlFor="profile-name">Name</label>
+                <input id="profile-name" value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Ismingiz" maxLength={40} autoComplete="name" required />
+                <label htmlFor="profile-age">Age</label>
+                <input id="profile-age" type="number" min="1" max="120" step="1" value={profileAge} onChange={(event) => setProfileAge(event.target.value)} placeholder="Yoshingiz" required />
+                <button className="modal-primary" type="submit"><Save size={16} /> {panel === "onboarding" ? "Continue" : "Save profile"}</button>
+              </form>
+            ) : (
+              <div className="settings-content">
+                <div className="settings-row">
+                  <div><strong>Appearance</strong><small>JUVAO ko‘rinishini tanlang</small></div>
+                  <button className="settings-choice" onClick={() => setTheme((value) => value === "light" ? "dark" : "light")}>{theme === "light" ? "Light" : "Dark"}</button>
+                </div>
+                <div className="settings-row">
+                  <div><strong>Web search</strong><small>Qidiruvni yangi xabarlarda yoqish</small></div>
+                  <button className={`settings-switch ${webSearch ? "is-on" : ""}`} role="switch" aria-checked={webSearch} onClick={() => setWebSearch((value) => !value)}>{webSearch ? "On" : "Off"}</button>
+                </div>
+                <div className="settings-row">
+                  <div><strong>Profile</strong><small>{profile ? `${profile.name} · ${profile.age} yosh` : "Hali sozlanmagan"}</small></div>
+                  <button className="settings-choice" onClick={openProfile}>Edit</button>
+                </div>
+                <p className="settings-note">Profil ma’lumotlari hozircha faqat shu qurilmaning brauzerida saqlanadi; hisoblararo sinxronlash mavjud emas.</p>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </main>
   );
 }
