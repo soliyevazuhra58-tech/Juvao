@@ -189,7 +189,7 @@ export default function Home() {
     setError("");
     if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; }
 
-    const autoSearch = /\b(latest|today|current|currently|recent|news|price|weather|2026|internetdan|qidir|manba|source|yangilik|bugun|hozir|narx|kurs)\b/i.test(text);
+    const autoSearch = /\b(latest|today|current|currently|recent|news|price|weather|2026|internet|internetdan|web|search|duckduckgo|google|qidiruv|qidir|izla|manba|source|yangilik|bugun|hozir|narx|kurs)\b/i.test(text);
     const useWebSearch = autoSearch;
     const editIndex = editMessageId ? activeChat.messages.findIndex((message) => message.id === editMessageId && message.role === "user") : -1;
     if (editMessageId && editIndex < 0) return;
