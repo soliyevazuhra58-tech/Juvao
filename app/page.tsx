@@ -424,10 +424,15 @@ export default function Home() {
                   const touch = event.touches[0];
                   const x = touch.clientX;
                   const y = touch.clientY;
+                  longPressTriggeredRef.current = false;
                   clearLongPress();
-                  longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; setPopupMenu({ kind: "chat", id: chat.id, x, y }); }, 520);
+                  longPressTimerRef.current = window.setTimeout(() => {
+                    longPressTriggeredRef.current = true;
+                    setPopupMenu({ kind: "chat", id: chat.id, x, y });
+                  }, 480);
                 }}
                 onTouchEnd={clearLongPress}
+                onTouchCancel={clearLongPress}
                 onTouchMove={clearLongPress}
               >
                 <button className="chat-select" onClick={(event) => { if (longPressTriggeredRef.current) { event.preventDefault(); longPressTriggeredRef.current = false; return; } setPopupMenu(null); setActiveId(chat.id); setMobileSidebar(false); }}>
@@ -499,10 +504,15 @@ export default function Home() {
                       const touch = event.touches[0];
                       const x = touch.clientX;
                       const y = touch.clientY;
+                      longPressTriggeredRef.current = false;
                       clearLongPress();
-                      longPressTimerRef.current = window.setTimeout(() => setPopupMenu({ kind: "message", id: message.id, x, y }), 520);
+                      longPressTimerRef.current = window.setTimeout(() => {
+                        longPressTriggeredRef.current = true;
+                        setPopupMenu({ kind: "message", id: message.id, x, y });
+                      }, 480);
                     }}
                     onTouchEnd={clearLongPress}
+                    onTouchCancel={clearLongPress}
                     onTouchMove={clearLongPress}
                   >
                     <div className="message-content-wrap">
@@ -599,7 +609,10 @@ export default function Home() {
       </section>
       {popupMenu && (
         <div className="selection-popup" role="menu"
-          style={{ left: popupMenu.x, top: popupMenu.y }}
+          style={{
+            left: `clamp(12px, ${popupMenu.x}px, calc(100vw - 172px))`,
+            top: `clamp(12px, ${popupMenu.y}px, calc(100dvh - ${popupMenu.kind === "message" ? "150px" : "58px"}))`,
+          }}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}>
           {popupMenu.kind === "message" ? (
