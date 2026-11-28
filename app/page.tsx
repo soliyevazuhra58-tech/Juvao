@@ -267,9 +267,13 @@ export default function Home() {
     recognition.onresult = (event: any) => {
       const transcript = Array.from(event.results as any[]).map((item: any) => item[0]?.transcript || "").join("");
       if (textareaRef.current) {
-        textareaRef.current.value = transcript;
-        textareaRef.current.style.height = "auto";
-        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+        const textarea = textareaRef.current;
+        textarea.value = transcript;
+        textarea.style.height = "auto";
+        const nextHeight = Math.min(textarea.scrollHeight, 120);
+        textarea.style.height = `${nextHeight}px`;
+        textarea.style.overflowY = textarea.scrollHeight > 120 ? "auto" : "hidden";
+        textarea.closest(".composer")?.classList.toggle("is-expanded", nextHeight > 42);
       }
     };
     recognition.onerror = () => setIsRecording(false);
@@ -289,12 +293,21 @@ export default function Home() {
     abortRef.current?.abort();
   }
 
+  function resetComposer() {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.value = "";
+    textarea.style.height = "38px";
+    textarea.style.overflowY = "hidden";
+    textarea.closest(".composer")?.classList.remove("is-expanded");
+  }
+
   function newChat() {
     if (streaming) return;
     const chat: Chat = { id: makeId(), title: "New chat", messages: [], updatedAt: Date.now() };
     setChats((prev) => [chat, ...prev]);
     setActiveId(chat.id);
-    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; textareaRef.current.style.overflowY = "hidden"; }
+    resetComposer();
     setError("");
     setMobileSidebar(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
@@ -317,7 +330,7 @@ export default function Home() {
     const text = (value ?? textareaRef.current?.value ?? "").trim();
     if (!text || streaming || !activeChat) return;
     setError("");
-    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; textareaRef.current.style.overflowY = "hidden"; }
+    resetComposer();
 
     const autoSearch = /\b(latest|today|current|currently|recent|news|price|weather|2026|internet|internetdan|web|search|duckduckgo|google|qidiruv|qidir|izla|manba|source|yangilik|bugun|hozir|narx|kurs)\b/i.test(text);
     const useWebSearch = autoSearch;
