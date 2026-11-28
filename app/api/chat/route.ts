@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return jsonError("JUVAO is not configured yet. Please try again later.", 503);
 
-  let body: { messages?: unknown; webSearch?: unknown };
+  let body: { messages?: unknown; webSearch?: unknown; task?: unknown };
   try {
     body = await request.json();
   } catch {
