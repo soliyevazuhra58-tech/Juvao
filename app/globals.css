@@ -343,3 +343,14 @@ kbd { font: 10px 'DM Sans', sans-serif; color: var(--subtle); padding: 2px 5px; 
 :root[data-theme="dark"] .markdown-body pre code .hljs-variable { color: #ffa657; }
 :root[data-theme="dark"] .markdown-body pre code .hljs-meta,
 :root[data-theme="dark"] .markdown-body pre code .hljs-symbol { color: #7ee787; }
+
+
+/* Long-press context menus */
+.chat-item { touch-action: pan-y; }
+.message-row { touch-action: pan-y; }
+.selection-popup { max-width: calc(100vw - 24px); }
+.selection-popup button { white-space: nowrap; }
+@media (max-width: 480px) {
+  .selection-popup { gap: 2px; padding: 5px; border-radius: 10px; }
+  .selection-popup button { min-height: 36px; padding: 0 9px; font-size: 10px; }
+}
