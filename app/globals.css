@@ -408,3 +408,18 @@ kbd { font: 10px 'DM Sans', sans-serif; color: var(--subtle); padding: 2px 5px; 
   .selection-popup { gap: 2px; padding: 5px; border-radius: 10px; }
   .selection-popup button { min-height: 36px; padding: 0 9px; font-size: 10px; }
 }
+
+
+/* Compact, capped auto-growing composer */
+.composer textarea {
+  min-height: 26px;
+  max-height: 120px;
+  overflow-y: hidden;
+  line-height: 1.5;
+  padding-block: 1px;
+}
+.composer { padding-top: 8px; padding-bottom: 7px; }
+@media (max-width: 760px) {
+  .composer textarea { min-height: 26px; max-height: 120px; }
+  .composer { padding-top: 7px; padding-bottom: 6px; }
+}
