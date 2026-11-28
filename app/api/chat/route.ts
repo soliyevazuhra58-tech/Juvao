@@ -38,18 +38,18 @@ function stripHtml(value: string): string {
 function extractDuckDuckGoResults(html: string): SearchSource[] {
   const results: SearchSource[] = [];
   const seen = new Set<string>();
-  const anchors = html.matchAll(/<a\\b([^>]*)>([\\s\\S]*?)<\\/a>/gi);
+  const anchors = html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi);
 
   for (const match of anchors) {
     const attrs = match[1];
-    const className = attrs.match(/class\\s*=\\s*["']([^"']*)["']/i)?.[1] || "";
+    const className = attrs.match(/class\s*=\s*["']([^"']*)["']/i)?.[1] || "";
     if (!/(?:result__a|result-link)/i.test(className)) continue;
-    const rawHref = attrs.match(/href\\s*=\\s*["']([^"']+)["']/i)?.[1];
+    const rawHref = attrs.match(/href\s*=\s*["']([^"']+)["']/i)?.[1];
     if (!rawHref) continue;
 
-    let target = decodeHtml(rawHref.trim());
     try {
-      const parsed = new URL(target, "https://duckduckgo.com");
+      const parsed = new URL(decodeHtml(rawHref.trim()), "https://duckduckgo.com");
+      let target = parsed.href;
       if (parsed.hostname.endsWith("duckduckgo.com")) {
         target = parsed.searchParams.get("uddg") || parsed.searchParams.get("url") || "";
       }
@@ -60,7 +60,7 @@ function extractDuckDuckGoResults(html: string): SearchSource[] {
       if (!title || seen.has(parsedTarget.href)) continue;
 
       const after = html.slice((match.index || 0) + match[0].length, (match.index || 0) + match[0].length + 1800);
-      const snippetMatch = after.match(/class=["'][^"']*(?:result__snippet|result-snippet|snippet)[^"']*["'][^>]*>([\\s\\S]*?)<\\/(?:a|div|td|span)>/i);
+      const snippetMatch = after.match(/class=["'][^"']*(?:result__snippet|result-snippet|snippet)[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|td|span)>/i);
       results.push({
         title,
         url: parsedTarget.href,
