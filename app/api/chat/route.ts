@@ -292,7 +292,27 @@ export async function POST(request: NextRequest) {
       signal: request.signal,
     });
 
-    if (!upstream.ok) return jsonError("JUVAO couldn't respond right now. Please try again in a moment.", 502);
+    if (!upstream.ok) {
+      const upstreamBody = await upstream.text().catch(() => "");
+      let upstreamMessage = "";
+      try {
+        const parsed = JSON.parse(upstreamBody);
+        upstreamMessage = String(parsed?.error?.message || parsed?.message || "");
+      } catch {
+        upstreamMessage = upstreamBody.slice(0, 500);
+      }
+      console.error("[JUVAO Groq] upstream error", upstream.status, upstreamMessage || upstreamBody.slice(0, 500));
+      if (upstream.status === 401 || upstream.status === 403) {
+        return jsonError("JUVAO API kaliti noto‘g‘ri yoki ruxsati yo‘q. Vercel Environment Variables ichidagi GROQ_API_KEY ni tekshiring.", 502);
+      }
+      if (upstream.status === 429) {
+        return jsonError("JUVAO hozir juda ko‘p so‘rov oldi yoki API limiti tugadi. Birozdan keyin qayta urinib ko‘ring.", 429);
+      }
+      if (upstream.status === 400) {
+        return jsonError("JUVAO so‘rov formati yoki model sozlamasida xato bor. Vercel Logs: [JUVAO Groq] yozuvini tekshiring.", 502);
+      }
+      return jsonError("JUVAO AI serveri vaqtincha javob bermadi (HTTP " + upstream.status + "). Birozdan keyin qayta urinib ko‘ring.", 502);
+    }
     if (!upstream.body) return jsonError("JUVAO returned an empty response. Please try again.", 502);
 
     const encoder = new TextEncoder();
