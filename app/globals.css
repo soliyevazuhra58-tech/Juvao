@@ -515,7 +515,7 @@ kbd { font: 10px 'DM Sans', sans-serif; color: var(--subtle); padding: 2px 5px; 
   -webkit-overflow-scrolling: touch;
 }
 .markdown-body .code-block-pre code { white-space: pre; }
-.conversation-scroll { scroll-behavior: smooth; overscroll-behavior-y: contain; }
+.conversation-scroll { overscroll-behavior-y: contain; }
 @media (max-width: 760px) {
   .markdown-body .code-block-header { min-height: 36px; padding-inline: 10px; }
   .markdown-body .code-block-pre { padding: 11px; font-size: 11px; }
