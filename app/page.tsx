@@ -21,6 +21,7 @@ type Panel = "onboarding" | "profile" | "settings" | null;
 const STORAGE_KEY = "juvao.chats.v2";
 const THEME_KEY = "juvao.theme";
 const PROFILE_KEY = "juvao.profile.v1";
+const WEB_SEARCH_KEY = "juvao.web-search";
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 function normalizeMathDelimiters(value: string): string {
@@ -64,6 +65,8 @@ export default function Home() {
     try {
       const savedTheme = localStorage.getItem(THEME_KEY);
       if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      const savedSearch = localStorage.getItem(WEB_SEARCH_KEY);
+      if (savedSearch === "true") setWebSearch(true);
       const savedProfile = localStorage.getItem(PROFILE_KEY);
       if (savedProfile) {
         const parsedProfile = JSON.parse(savedProfile) as UserProfile;
@@ -100,6 +103,10 @@ export default function Home() {
   useEffect(() => {
     if (chats.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
   }, [chats]);
+
+  useEffect(() => {
+    localStorage.setItem(WEB_SEARCH_KEY, String(webSearch));
+  }, [webSearch]);
 
   const activeChat = chats.find((chat) => chat.id === activeId) ?? chats[0];
   const messages = activeChat?.messages ?? [];
