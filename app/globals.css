@@ -346,10 +346,64 @@ kbd { font: 10px 'DM Sans', sans-serif; color: var(--subtle); padding: 2px 5px; 
 
 
 /* Long-press context menus */
-.chat-item { touch-action: pan-y; }
-.message-row { touch-action: pan-y; }
-.selection-popup { max-width: calc(100vw - 24px); }
-.selection-popup button { white-space: nowrap; }
+.chat-item, .chat-item *, .user-bubble, .user-bubble * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+.chat-item, .message-row { touch-action: pan-y; }
+.selection-popup {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 160px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 36px rgba(0,0,0,.18);
+  transform-origin: top left;
+  animation: popup-in .18s cubic-bezier(.2,.8,.2,1) both;
+  will-change: transform, opacity;
+}
+.selection-popup button {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .16s ease, transform .16s ease, color .16s ease;
+}
+.selection-popup button:hover { background: var(--surface-soft); }
+.selection-popup button:active { background: var(--accent-soft); transform: scale(.98); }
+.selection-popup button:disabled { opacity: .4; cursor: not-allowed; }
+.selection-divider {
+  width: auto;
+  height: 1px;
+  margin: 2px 5px;
+  background: var(--line);
+}
+@keyframes popup-in {
+  from { opacity: 0; transform: translateY(7px) scale(.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.chat-item, .message-row, .selection-popup, .selection-popup button {
+  -webkit-tap-highlight-color: transparent;
+}
 @media (max-width: 480px) {
   .selection-popup { gap: 2px; padding: 5px; border-radius: 10px; }
   .selection-popup button { min-height: 36px; padding: 0 9px; font-size: 10px; }
