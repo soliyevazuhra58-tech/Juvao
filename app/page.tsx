@@ -63,8 +63,18 @@ export default function Home() {
   const longPressTriggeredRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const popupMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const stopTypingRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!popupMenu) return;
+    const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
+      if (!popupMenuRef.current?.contains(event.target as Node)) setPopupMenu(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [popupMenu]);
 
   useEffect(() => {
     try {
@@ -171,7 +181,7 @@ export default function Home() {
     const chat: Chat = { id: makeId(), title: "New chat", messages: [], updatedAt: Date.now() };
     setChats((prev) => [chat, ...prev]);
     setActiveId(chat.id);
-    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; }
+    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; textareaRef.current.style.overflowY = "hidden"; }
     setError("");
     setMobileSidebar(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
@@ -194,7 +204,7 @@ export default function Home() {
     const text = (value ?? textareaRef.current?.value ?? "").trim();
     if (!text || streaming || !activeChat) return;
     setError("");
-    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; }
+    if (textareaRef.current) { textareaRef.current.value = ""; textareaRef.current.style.height = "auto"; textareaRef.current.style.overflowY = "hidden"; }
 
     const autoSearch = /\b(latest|today|current|currently|recent|news|price|weather|2026|internet|internetdan|web|search|duckduckgo|google|qidiruv|qidir|izla|manba|source|yangilik|bugun|hozir|narx|kurs)\b/i.test(text);
     const useWebSearch = autoSearch;
@@ -584,7 +594,9 @@ export default function Home() {
               onChange={(event) => {
                 const element = event.currentTarget;
                 element.style.height = "auto";
-                element.style.height = `${Math.min(element.scrollHeight, 190)}px`;
+                const nextHeight = Math.min(element.scrollHeight, 120);
+                element.style.height = `${nextHeight}px`;
+                element.style.overflowY = element.scrollHeight > 120 ? "auto" : "hidden";
               }}
               onKeyDown={onKeyDown}
               placeholder="Message JUVAO..."
@@ -592,7 +604,6 @@ export default function Home() {
               aria-label="Message JUVAO"
             />
             <div className="composer-footer">
-              <div className="composer-tools"><span className="composer-hint">Enter to send</span></div>
               {streaming ? (
                 <button className="send-button stop-button" type="button" onClick={stopGeneration} aria-label="Stop generating" title="Stop generating">
                   <StopCircle size={18} />
@@ -608,7 +619,7 @@ export default function Home() {
         </div>
       </section>
       {popupMenu && (
-        <div className="selection-popup" role="menu"
+        <div ref={popupMenuRef} className="selection-popup" role="menu"
           style={{
             left: `clamp(12px, ${popupMenu.x}px, calc(100vw - 172px))`,
             top: `clamp(12px, ${popupMenu.y}px, calc(100dvh - ${popupMenu.kind === "message" ? "150px" : "58px"}))`,
