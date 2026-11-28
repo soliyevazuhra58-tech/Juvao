@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Children, FormEvent, isValidElement, KeyboardEvent, ReactElement, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -9,7 +9,7 @@ import rehypeHighlight from "rehype-highlight";
 import {
   ArrowUp, Check, Copy, Edit3, Menu, MessageSquarePlus, Moon, PanelLeftClose,
   PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink,
-  UserRound, Settings, StopCircle, Save, RefreshCw
+  UserRound, Settings, StopCircle, Save, RefreshCw, Code2, Braces, FileCode2, Terminal, Database, FileJson
 } from "lucide-react";
 
 type SearchSource = { title: string; url: string; snippet: string };
@@ -31,9 +31,65 @@ function normalizeMathDelimiters(value: string): string {
     .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula: string) => "$" + formula.trim() + "$");
 }
 
+function getCodeText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(getCodeText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return getCodeText(node.props.children);
+  return "";
+}
+
+function CodeBlock({ children }: { children: ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  const codeNode = Children.toArray(children).find((child) => isValidElement(child)) as ReactElement<{ className?: string; children?: ReactNode }> | undefined;
+  const codeClass = codeNode?.props.className ?? "";
+  const rawLanguage = codeClass.match(/language-([\\w+#.-]+)/i)?.[1]?.toLowerCase() ?? "";
+  const languageNames: Record<string, string> = {
+    js: "JavaScript", jsx: "JSX", ts: "TypeScript", tsx: "TSX", py: "Python",
+    html: "HTML", css: "CSS", json: "JSON", bash: "Bash", sh: "Shell",
+    shell: "Shell", sql: "SQL", java: "Java", c: "C", cpp: "C++",
+    cs: "C#", go: "Go", rs: "Rust", php: "PHP", rb: "Ruby",
+    swift: "Swift", kt: "Kotlin", yaml: "YAML", yml: "YAML",
+    md: "Markdown", markdown: "Markdown", xml: "XML", toml: "TOML",
+  };
+  const language = languageNames[rawLanguage] ?? (rawLanguage ? rawLanguage.toUpperCase() : "Code");
+  const LanguageIcon = ["js", "jsx", "ts", "tsx", "json"].includes(rawLanguage)
+    ? Braces
+    : ["bash", "sh", "shell"].includes(rawLanguage)
+      ? Terminal
+      : rawLanguage === "sql"
+        ? Database
+        : rawLanguage === "html" || rawLanguage === "css" || rawLanguage === "py"
+          ? FileCode2
+          : rawLanguage === "yaml" || rawLanguage === "yml"
+            ? FileJson
+            : Code2;
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(getCodeText(codeNode?.props.children ?? children));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {}
+  }
+
+  return (
+    <div className="code-block">
+      <div className="code-block-header">
+        <span className="code-language"><LanguageIcon size={14} strokeWidth={1.9} />{language}</span>
+        <button className="code-copy-button" type="button" onClick={copyCode} aria-label="Copy code">
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="code-block-pre">{children}</pre>
+    </div>
+  );
+}
+
 const markdownComponents: Components = {
   table: ({ children }) => <div className="table-scroll" role="region" aria-label="Scrollable table" tabIndex={0}><table>{children}</table></div>,
   a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
 };
 
 const suggestions = [
@@ -62,6 +118,7 @@ export default function Home() {
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const conversationScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popupMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -125,7 +182,9 @@ export default function Home() {
   );
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const container = conversationScrollRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
 
@@ -520,7 +579,7 @@ export default function Home() {
           </button>
         </header>
 
-        <div className="conversation-scroll">
+        <div className="conversation-scroll" ref={conversationScrollRef}>
           <div className={`conversation ${messages.length === 0 ? "conversation-empty" : ""}`}>
             {messages.length === 0 ? (
               <div className="welcome">
