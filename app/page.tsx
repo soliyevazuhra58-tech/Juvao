@@ -583,10 +583,7 @@ export default function Home() {
                   <div><strong>Appearance</strong><small>JUVAO ko‘rinishini tanlang</small></div>
                   <button className="settings-choice" onClick={() => setTheme((value) => value === "light" ? "dark" : "light")}>{theme === "light" ? "Light" : "Dark"}</button>
                 </div>
-                <div className="settings-row">
-                  <div><strong>Web search</strong><small>Qidiruvni yangi xabarlarda yoqish</small></div>
-                  <button className={`settings-switch ${webSearch ? "is-on" : ""}`} role="switch" aria-checked={webSearch} onClick={() => setWebSearch((value) => !value)}>{webSearch ? "On" : "Off"}</button>
-                </div>
+                
                 <div className="settings-row">
                   <div><strong>Profile</strong><small>{profile ? `${profile.name} · ${profile.age} yosh` : "Hali sozlanmagan"}</small></div>
                   <button className="settings-choice" onClick={openProfile}>Edit</button>
