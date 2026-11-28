@@ -25,10 +25,8 @@ const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.
 
 function normalizeMathDelimiters(value: string): string {
   return value
-    .replace(/\\\[([\s\S]*?)\\\]/g, (_, formula: string) => \`$$
-\${formula.trim()}
-$$\`)
-    .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula: string) => \`$\${formula.trim()}$\`);
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, formula: string) => "$$\n" + formula.trim() + "\n$$")
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula: string) => "$" + formula.trim() + "$");
 }
 
 const markdownComponents: Components = {
