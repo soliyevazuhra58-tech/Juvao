@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "katex/dist/katex.min.css";
+import "highlight.js/styles/github.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
