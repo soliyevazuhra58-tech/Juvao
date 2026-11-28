@@ -132,11 +132,22 @@ export default function Home() {
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastQuestionIdRef = useRef<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popupMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const stopTypingRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const lastQuestion = [...messages].reverse().find((message) => message.role === "user");
+    if (!lastQuestion) return;
+    if (lastQuestionIdRef.current === null) { lastQuestionIdRef.current = lastQuestion.id; return; }
+    if (lastQuestionIdRef.current !== lastQuestion.id) {
+      lastQuestionIdRef.current = lastQuestion.id;
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (!popupMenu) return;
@@ -646,21 +657,6 @@ export default function Home() {
                   <article
                     className={`message-row ${message.role === "user" ? "user-row" : "assistant-row"}`}
                     key={message.id}
-                    onContextMenu={(event) => { event.preventDefault(); setPopupMenu({ kind: "message", id: message.id, x: event.clientX, y: event.clientY }); }}
-                    onTouchStart={(event) => {
-                      const touch = event.touches[0];
-                      const x = touch.clientX;
-                      const y = touch.clientY;
-                      longPressTriggeredRef.current = false;
-                      clearLongPress();
-                      longPressTimerRef.current = window.setTimeout(() => {
-                        longPressTriggeredRef.current = true;
-                        setPopupMenu({ kind: "message", id: message.id, x, y });
-                      }, 480);
-                    }}
-                    onTouchEnd={clearLongPress}
-                    onTouchCancel={clearLongPress}
-                    onTouchMove={clearLongPress}
                   >
                     <div className="message-content-wrap">
                       {message.role === "assistant" && <div className="message-author">JUVAO</div>}
@@ -740,6 +736,7 @@ export default function Home() {
                   const nextHeight = Math.min(element.scrollHeight, 120);
                   element.style.height = `${nextHeight}px`;
                   element.style.overflowY = element.scrollHeight > 120 ? "auto" : "hidden";
+                  element.closest(".composer")?.classList.toggle("is-expanded", nextHeight > 42);
                 }}
                 onKeyDown={onKeyDown}
                 placeholder="Message JUVAO..."
@@ -748,7 +745,6 @@ export default function Home() {
               />
             </div>
             <div className="composer-toolbar">
-              <span className="composer-hint">Enter — send</span>
               <div className="composer-tools">
                 <button className={`voice-button ${isRecording ? "is-recording" : ""}`} type="button" onClick={startVoiceInput} aria-label={isRecording ? "Stop voice input" : "Voice input"} title={isRecording ? "Stop recording" : "Voice input"}>
                   {isRecording ? <MicOff size={17} /> : <Mic size={17} />}
