@@ -140,16 +140,6 @@ export default function Home() {
   const stopTypingRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const lastQuestion = [...messages].reverse().find((message) => message.role === "user");
-    if (!lastQuestion) return;
-    if (lastQuestionIdRef.current === null) { lastQuestionIdRef.current = lastQuestion.id; return; }
-    if (lastQuestionIdRef.current !== lastQuestion.id) {
-      lastQuestionIdRef.current = lastQuestion.id;
-      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
-    }
-  }, [messages]);
-
-  useEffect(() => {
     if (!popupMenu) return;
     const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
       if (!popupMenuRef.current?.contains(event.target as Node)) setPopupMenu(null);
@@ -204,6 +194,17 @@ export default function Home() {
 
   const activeChat = chats.find((chat) => chat.id === activeId) ?? chats[0];
   const messages = activeChat?.messages ?? [];
+
+  useEffect(() => {
+    const lastQuestion = [...messages].reverse().find((message) => message.role === "user");
+    if (!lastQuestion) return;
+    if (lastQuestionIdRef.current === null) { lastQuestionIdRef.current = lastQuestion.id; return; }
+    if (lastQuestionIdRef.current !== lastQuestion.id) {
+      lastQuestionIdRef.current = lastQuestion.id;
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+    }
+  }, [messages]);
+
   const filteredChats = useMemo(
     () => chats.filter((chat) => chat.title.toLowerCase().includes(searchTerm.toLowerCase())),
     [chats, searchTerm]
