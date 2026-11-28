@@ -118,8 +118,7 @@ export default function Home() {
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const conversationScrollRef = useRef<HTMLDivElement>(null);
-  const scrollFrameRef = useRef<number | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popupMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -182,31 +181,7 @@ export default function Home() {
     [chats, searchTerm]
   );
 
-  useEffect(() => {
-    const container = conversationScrollRef.current;
-    if (!container || scrollFrameRef.current !== null) return;
-    const followLatest = () => {
-      const current = conversationScrollRef.current;
-      if (!current) {
-        scrollFrameRef.current = null;
-        return;
-      }
-      const target = Math.max(0, current.scrollHeight - current.clientHeight);
-      const distance = target - current.scrollTop;
-      if (Math.abs(distance) < 0.75) {
-        current.scrollTop = target;
-        scrollFrameRef.current = null;
-        return;
-      }
-      current.scrollTop += distance * 0.22;
-      scrollFrameRef.current = window.requestAnimationFrame(followLatest);
-    };
-    scrollFrameRef.current = window.requestAnimationFrame(followLatest);
-  }, [messages]);
 
-  useEffect(() => () => {
-    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
-  }, []);
 
 
 
@@ -600,7 +575,7 @@ export default function Home() {
           </button>
         </header>
 
-        <div className="conversation-scroll" ref={conversationScrollRef}>
+        <div className="conversation-scroll">
           <div className={`conversation ${messages.length === 0 ? "conversation-empty" : ""}`}>
             {messages.length === 0 ? (
               <div className="welcome">
