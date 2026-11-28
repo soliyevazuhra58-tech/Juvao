@@ -9,7 +9,7 @@ import rehypeHighlight from "rehype-highlight";
 import {
   ArrowUp, Check, Copy, Edit3, Menu, MessageSquarePlus, Moon, PanelLeftClose,
   PanelLeftOpen, Search, Sun, Trash2, X, Coffee, SquarePen, Globe, ExternalLink,
-  UserRound, Settings, StopCircle, Save
+  UserRound, Settings, StopCircle, Save, RefreshCw
 } from "lucide-react";
 
 type SearchSource = { title: string; url: string; snippet: string };
@@ -215,9 +215,7 @@ export default function Home() {
       ? { ...activeChat.messages[editIndex], content: text }
       : { id: makeId(), role: "user", content: text };
     const assistantMessage: Message = { id: makeId(), role: "assistant", content: "" };
-    const title = previousMessages.length === 0
-      ? text.slice(0, 48) + (text.length > 48 ? "…" : "")
-      : activeChat.title;
+    const title = activeChat.title;
 
     setChats((prev) => prev.map((chat) => chat.id === activeChat.id
       ? { ...chat, title, messages: [...previousMessages, userMessage, assistantMessage], updatedAt: Date.now() }
@@ -306,6 +304,32 @@ export default function Home() {
       while (pendingText.length && !controller.signal.aborted) await new Promise((resolve) => window.setTimeout(resolve, 8));
       window.clearInterval(typingTimer);
       if (!receivedText) throw new Error("No response was received. Please try again.");
+
+      // Ask JUVAO to create a concise title for a brand-new conversation.
+      if (previousMessages.length === 0) {
+        void fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task: "title",
+            messages: [
+              { role: "user", content: text },
+              { role: "assistant", content: receivedText.slice(0, 1200) },
+            ],
+          }),
+        })
+          .then(async (result) => result.ok ? result.json() : null)
+          .then((data) => {
+            const generatedTitle = typeof data?.title === "string" ? data.title.trim().slice(0, 48) : "";
+            if (!generatedTitle) return;
+            setChats((prev) => prev.map((chat) =>
+              chat.id === activeChat.id && chat.title === "New chat"
+                ? { ...chat, title: generatedTitle }
+                : chat
+            ));
+          })
+          .catch(() => {});
+      }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         setChats((prev) => prev.map((chat) => chat.id === activeChat.id
@@ -339,6 +363,17 @@ export default function Home() {
       stopTypingRef.current = null;
       textareaRef.current?.focus();
     }
+  }
+
+  function regenerateResponse(message: Message) {
+    if (streaming || !activeChat) return;
+    const messageIndex = activeChat.messages.findIndex((item) => item.id === message.id);
+    if (messageIndex < 0 || message.role !== "assistant") return;
+    let userIndex = messageIndex - 1;
+    while (userIndex >= 0 && activeChat.messages[userIndex].role !== "user") userIndex--;
+    if (userIndex < 0) return;
+    const userMessage = activeChat.messages[userIndex];
+    void sendMessage(userMessage.content, userMessage.id);
   }
 
   function beginEdit(message: Message) {
@@ -561,6 +596,11 @@ export default function Home() {
                             {copiedId === message.id ? <Check size={14} /> : <Copy size={14} />}
                             {copiedId === message.id ? "Copied" : "Copy"}
                           </button>
+                          {message === messages[messages.length - 1] && !streaming && (
+                            <button onClick={() => regenerateResponse(message)} aria-label="Regenerate response" title="Regenerate response">
+                              <RefreshCw size={14} /> Regenerate
+                            </button>
+                          )}
                         </div>
                       )}
                       {message.role === "assistant" && message.sources && message.sources.length > 0 && (
